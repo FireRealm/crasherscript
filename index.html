@@ -40,6 +40,8 @@
         .btn-secondary:hover { background: #2a3646; }
         .btn-success { background: #22c55e; color: #fff; }
         .btn-success:hover { background: #16a34a; }
+        .btn-warning { background: #f59e0b; color: #fff; }
+        .btn-warning:hover { background: #d97706; }
         
         .fps-control { display: flex; gap: 10px; margin: 10px 0; align-items: center; }
         .fps-control input { flex: 1; padding: 8px; border-radius: 6px; border: 1px solid #2a3646; background: #0b0d11; color: #fff; }
@@ -75,14 +77,14 @@
             
             <!-- FPS CONTROL -->
             <div class="fps-control">
-                <input type="number" id="fpsInput" placeholder="FPS (e.g., 10)" min="1" max="60" />
-                <button class="btn btn-primary" id="btnSetFps">Set FPS</button>
+                <input type="number" id="fpsInput" placeholder="FPS (1-60)" min="1" max="60" />
+                <button class="btn btn-primary" id="btnSetFps">Set</button>
             </div>
             <button class="btn btn-secondary" id="btnDisableFps">Disable FPS Limit</button>
             
             <!-- ACTION BUTTONS -->
             <button class="btn btn-danger" id="btnCrash">💥 CRASH</button>
-            <button class="btn btn-danger" id="btnKick">👢 KICK</button>
+            <button class="btn btn-warning" id="btnKick">👢 KICK</button>
         </aside>
     </div>
 </div>
@@ -131,7 +133,7 @@
         selectedUserId = userId;
         const p = players.get(userId);
         if (p) {
-            document.getElementById('targetStatus').textContent = `Selected: ${p.username || 'Unknown'} (${p.display_name || ''})`;
+            document.getElementById('targetStatus').textContent = `Selected: ${p.username || 'Unknown'}`;
         }
         renderPlayers();
     }
@@ -145,13 +147,12 @@
                 body: JSON.stringify({ user_id: selectedUserId, ...payload })
             });
             if (res.ok) {
-                showToast('✅ Command sent successfully!');
-                // Clear FPS input if it was a FPS command
+                showToast('✅ Command sent!');
                 if (payload.fps_limit !== undefined) {
                     document.getElementById('fpsInput').value = '';
                 }
             } else {
-                showToast('❌ Failed to send command');
+                showToast('❌ Failed to send');
             }
         } catch (e) {
             showToast('❌ Error: ' + e.message);
@@ -170,46 +171,36 @@
     // BUTTON EVENTS
     // ============================================
 
-    // CRASH
     document.getElementById('btnCrash').addEventListener('click', () => {
         if (!selectedUserId) { showToast('Select a player first!'); return; }
         const p = players.get(selectedUserId);
-        if (confirm(`💥 CRASH ${p?.username || 'player'}? This will freeze their game!`)) {
+        if (confirm(`💥 CRASH ${p?.username || 'player'}?`)) {
             sendCommand({ crash: true });
         }
     });
 
-    // KICK
     document.getElementById('btnKick').addEventListener('click', () => {
         if (!selectedUserId) { showToast('Select a player first!'); return; }
         const p = players.get(selectedUserId);
-        if (confirm(`👢 KICK ${p?.username || 'player'}? They will see: "You have been banned."`)) {
+        if (confirm(`👢 KICK ${p?.username || 'player'}?`)) {
             sendCommand({ kick: true });
         }
     });
 
-    // SET FPS
     document.getElementById('btnSetFps').addEventListener('click', () => {
         if (!selectedUserId) { showToast('Select a player first!'); return; }
         const fpsInput = document.getElementById('fpsInput');
         const fps = parseInt(fpsInput.value);
         if (!fps || fps < 1 || fps > 60) {
-            showToast('❌ Enter a valid FPS (1-60)');
+            showToast('❌ Enter valid FPS (1-60)');
             return;
         }
-        const p = players.get(selectedUserId);
-        if (confirm(`🎯 Set FPS to ${fps} for ${p?.username || 'player'}?`)) {
-            sendCommand({ fps_limit: fps });
-        }
+        sendCommand({ fps_limit: fps });
     });
 
-    // DISABLE FPS
     document.getElementById('btnDisableFps').addEventListener('click', () => {
         if (!selectedUserId) { showToast('Select a player first!'); return; }
-        const p = players.get(selectedUserId);
-        if (confirm(`❌ Disable FPS limit for ${p?.username || 'player'}?`)) {
-            sendCommand({ fps_limit: false });
-        }
+        sendCommand({ fps_limit: false });
     });
 
     // Auto-refresh every 3 seconds
