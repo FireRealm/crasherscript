@@ -6,7 +6,7 @@ const app = express();
 const PORT = process.env.PORT || 3000;
 
 // Use PUBLIC_URL env var, then RENDER_EXTERNAL_URL, then your new Railway URL as final fallback
-const PUBLIC_URL = process.env.PUBLIC_URL || process.env.RENDER_EXTERNAL_URL || 'https://i-m-gay-production.up.railway.app';
+const PUBLIC_URL = process.env.PUBLIC_URL || process.env.RENDER_EXTERNAL_URL || 'crasherscript-production.up.railway.app';
 
 app.use(cors());
 app.use(express.json({ limit: '10mb' }));
