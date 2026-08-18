@@ -17,25 +17,33 @@ app.use(express.json({ limit: '10mb' }));
 const players = new Map();
 
 // ============================================
-// LOADER SCRIPT - NOW USES POST FOR POLLING
+// LOADER SCRIPT - USES RequestAsync (UNIVERSAL)
 // ============================================
 app.get('/loader.lua', (req, res) => {
-    const loader = `--[[ Xeno Crasher Client - POST Polling ]]--
+    const loader = `--[[ Xeno Crasher - RequestAsync ]]--
 local BASE = "${PUBLIC_URL}"
 local KEY  = "xenooooo"
 
 -- ============================================
--- HTTP USING POST ONLY (BYPASSES GET BLOCK)
+-- UNIVERSAL HTTP using RequestAsync (POST only)
 -- ============================================
 local HttpService = game:GetService("HttpService")
 HttpService.HttpEnabled = true
 
 local function sendPost(url, data)
     local success, result = pcall(function()
-        return HttpService:PostAsync(url, data or "", Enum.HttpContentType.ApplicationJson)
+        return HttpService:RequestAsync({
+            Url = url,
+            Method = "POST",
+            Headers = {
+                ["Content-Type"] = "application/json",
+                ["X-Api-Key"] = KEY
+            },
+            Body = data or ""
+        })
     end)
-    if success then
-        return result
+    if success and result and result.Body then
+        return result.Body
     else
         warn("HTTP Error: " .. tostring(result))
         return nil
@@ -88,7 +96,7 @@ local function createGUI()
     local status = Instance.new("TextLabel")
     status.Size = UDim2.new(1, 0, 0, 20)
     status.Position = UDim2.new(0, 0, 0, 30)
-    status.Text = "🟢 Waiting..."
+    status.Text = "🟢 Connecting..."
     status.TextColor3 = Color3.fromRGB(150, 150, 150)
     status.BackgroundTransparency = 1
     status.Font = Enum.Font.SourceSans
@@ -101,7 +109,7 @@ end
 local gui, statusLabel = createGUI()
 
 -- ============================================
--- HEARTBEAT (POST)
+-- HEARTBEAT
 -- ============================================
 local function heartbeat()
     local data = HttpService:JSONEncode({
@@ -149,10 +157,9 @@ local function setFPSLimit(targetFPS)
 end
 
 -- ============================================
--- POLL - NOW USES POST
+-- POLL - uses POST with body
 -- ============================================
 local function poll()
-    -- Send POST with user_id in body
     local body = HttpService:JSONEncode({ user_id = LP.UserId })
     local result = sendPost(BASE .. "/api/public/command", body)
     
@@ -285,9 +292,7 @@ app.post('/api/command', (req, res) => {
     res.json({ status: 'ok' });
 });
 
-// ============================================
-// ✅ NEW: POST endpoint for polling (used by script)
-// ============================================
+// POST endpoint for polling (receives user_id in body)
 app.post('/api/public/command', (req, res) => {
     const { user_id } = req.body;
     if (!user_id) return res.status(400).json({ error: 'Missing user_id' });
