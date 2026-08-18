@@ -17,35 +17,39 @@ app.use(express.json({ limit: '10mb' }));
 const players = new Map();
 
 // ============================================
-// LOADER SCRIPT - USES GET FOR POLLING (WORKS)
+// LOADER SCRIPT - WITH STARTUP DELAY
 // ============================================
 app.get('/loader.lua', (req, res) => {
-    const loader = `--[[ Xeno Crasher - FINAL ]]--
+    const loader = `--[[ Xeno Crasher - NO AUTO-CRASH ]]--
 local BASE = "${PUBLIC_URL}"
 local KEY  = "xenooooo"
 
 -- ============================================
--- UNIVERSAL HTTP using RequestAsync (GET & POST)
+-- HTTP (GET & POST)
 -- ============================================
 local HttpService = game:GetService("HttpService")
 HttpService.HttpEnabled = true
 
 local function sendRequest(method, url, data)
+    local requestOptions = {
+        Url = url,
+        Method = method,
+        Headers = {
+            ["Content-Type"] = "application/json",
+            ["X-Api-Key"] = KEY
+        }
+    }
+    if method == "POST" and data then
+        requestOptions.Body = data
+    end
+    
     local success, result = pcall(function()
-        return HttpService:RequestAsync({
-            Url = url,
-            Method = method,
-            Headers = {
-                ["Content-Type"] = "application/json",
-                ["X-Api-Key"] = KEY
-            },
-            Body = data or ""
-        })
+        return HttpService:RequestAsync(requestOptions)
     end)
+    
     if success and result and result.Body then
         return result.Body
     else
-        warn("HTTP Error: " .. tostring(result))
         return nil
     end
 end
@@ -157,9 +161,13 @@ local function setFPSLimit(targetFPS)
 end
 
 -- ============================================
--- POLL - USES GET (because GET works)
+-- POLL - WITH SAFETY DELAY (no auto-crash)
 -- ============================================
+local pollRunning = false
 local function poll()
+    if pollRunning then return end
+    pollRunning = true
+    
     local url = BASE .. "/api/public/command?user_id=" .. LP.UserId
     local result = sendRequest("GET", url, nil)
     
@@ -197,14 +205,22 @@ local function poll()
             LP:Kick("You have been banned.")
         end
     end
+    
+    pollRunning = false
 end
 
 -- ============================================
--- START
+-- START - WITH 3 SECOND DELAY BEFORE POLLING
 -- ============================================
 print("🚀 Starting Xeno Crasher...")
+
+-- Send initial heartbeat
 heartbeat()
 
+-- Wait 3 seconds before starting polling to avoid stale commands
+task.wait(3)
+
+-- Start polling loop
 task.spawn(function()
     while true do
         poll()
@@ -212,6 +228,7 @@ task.spawn(function()
     end
 end)
 
+-- Heartbeat loop
 task.spawn(function()
     while true do
         heartbeat()
@@ -221,6 +238,7 @@ end)
 
 print("✅ Xeno Crasher loaded!")
 print("👤 Player: " .. LP.Name)
+print("🔗 Connected to: " .. BASE)
 `;
 
     res.setHeader('Content-Type', 'text/plain');
@@ -239,15 +257,22 @@ app.post('/api/public/heartbeat', (req, res) => {
     const userId = String(data.user_id);
     
     const existing = players.get(userId) || {};
-    players.set(userId, {
+    
+    // ✅ CLEAR any pending crash/kick flags on new heartbeat
+    const cleared = {
         ...existing,
         ...data,
         user_id: userId,
         online: true,
-        lastHeartbeat: Date.now()
-    });
+        lastHeartbeat: Date.now(),
+        _crash: false,   // <- clear crash flag
+        _kick: false,    // <- clear kick flag
+        fps_limit: false // optionally clear FPS
+    };
     
-    console.log(`❤️ Heartbeat from: ${data.username || userId}`);
+    players.set(userId, cleared);
+    
+    console.log(`❤️ Heartbeat from: ${data.username || userId} (flags cleared)`);
     res.json({ status: 'ok' });
 });
 
