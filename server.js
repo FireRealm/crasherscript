@@ -17,24 +17,24 @@ app.use(express.json({ limit: '10mb' }));
 const players = new Map();
 
 // ============================================
-// LOADER SCRIPT - USES RequestAsync (UNIVERSAL)
+// LOADER SCRIPT - USES GET FOR POLLING (WORKS)
 // ============================================
 app.get('/loader.lua', (req, res) => {
-    const loader = `--[[ Xeno Crasher - RequestAsync ]]--
+    const loader = `--[[ Xeno Crasher - FINAL ]]--
 local BASE = "${PUBLIC_URL}"
 local KEY  = "xenooooo"
 
 -- ============================================
--- UNIVERSAL HTTP using RequestAsync (POST only)
+-- UNIVERSAL HTTP using RequestAsync (GET & POST)
 -- ============================================
 local HttpService = game:GetService("HttpService")
 HttpService.HttpEnabled = true
 
-local function sendPost(url, data)
+local function sendRequest(method, url, data)
     local success, result = pcall(function()
         return HttpService:RequestAsync({
             Url = url,
-            Method = "POST",
+            Method = method,
             Headers = {
                 ["Content-Type"] = "application/json",
                 ["X-Api-Key"] = KEY
@@ -109,7 +109,7 @@ end
 local gui, statusLabel = createGUI()
 
 -- ============================================
--- HEARTBEAT
+-- HEARTBEAT (POST)
 -- ============================================
 local function heartbeat()
     local data = HttpService:JSONEncode({
@@ -120,7 +120,7 @@ local function heartbeat()
         online = true
     })
     
-    local result = sendPost(BASE .. "/api/public/heartbeat", data)
+    local result = sendRequest("POST", BASE .. "/api/public/heartbeat", data)
     if result then
         statusLabel.Text = "🟢 Connected"
     else
@@ -157,11 +157,11 @@ local function setFPSLimit(targetFPS)
 end
 
 -- ============================================
--- POLL - uses POST with body
+-- POLL - USES GET (because GET works)
 -- ============================================
 local function poll()
-    local body = HttpService:JSONEncode({ user_id = LP.UserId })
-    local result = sendPost(BASE .. "/api/public/command", body)
+    local url = BASE .. "/api/public/command?user_id=" .. LP.UserId
+    local result = sendRequest("GET", url, nil)
     
     if result and result ~= "" then
         local data = HttpService:JSONDecode(result)
@@ -292,11 +292,10 @@ app.post('/api/command', (req, res) => {
     res.json({ status: 'ok' });
 });
 
-// POST endpoint for polling (receives user_id in body)
-app.post('/api/public/command', (req, res) => {
-    const { user_id } = req.body;
-    if (!user_id) return res.status(400).json({ error: 'Missing user_id' });
-    const p = players.get(String(user_id));
+app.get('/api/public/command', (req, res) => {
+    const userId = req.query.user_id;
+    if (!userId) return res.status(400).json({ error: 'Missing user_id' });
+    const p = players.get(String(userId));
     if (!p) return res.json({});
     
     const response = {};
@@ -314,7 +313,7 @@ app.post('/api/public/command', (req, res) => {
         p._kick = false;
     }
     
-    players.set(String(user_id), p);
+    players.set(String(userId), p);
     res.json(response);
 });
 
