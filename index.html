@@ -144,8 +144,15 @@
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify({ user_id: selectedUserId, ...payload })
             });
-            if (res.ok) showToast('✅ Command sent successfully!');
-            else showToast('❌ Failed to send command');
+            if (res.ok) {
+                showToast('✅ Command sent successfully!');
+                // Clear FPS input if it was a FPS command
+                if (payload.fps_limit !== undefined) {
+                    document.getElementById('fpsInput').value = '';
+                }
+            } else {
+                showToast('❌ Failed to send command');
+            }
         } catch (e) {
             showToast('❌ Error: ' + e.message);
         }
