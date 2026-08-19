@@ -20,27 +20,19 @@ const players = new Map();
 // LOADER SCRIPT
 // ============================================
 app.get('/loader.lua', (req, res) => {
-    // Serve the script above (or use the one from your site)
-    const loader = `--[[ Xeno Crasher - UNIVERSAL ]]--
+    const loader = `--[[ Xeno Crasher - 100% GET ]]--
 local BASE = "${PUBLIC_URL}"
-local KEY  = "xenooooo"
+local KEY = "xenooooo"
 
 local HttpService = game:GetService("HttpService")
 HttpService.HttpEnabled = true
 
 local function sendGet(url)
     local success, result = pcall(function()
-        return HttpService:RequestAsync({
-            Url = url,
-            Method = "GET",
-            Headers = {
-                ["Content-Type"] = "application/json",
-                ["X-Api-Key"] = KEY
-            }
-        })
+        return HttpService:GetAsync(url)
     end)
-    if success and result and result.Body then
-        return result.Body
+    if success then
+        return result
     else
         return nil
     end
@@ -105,7 +97,7 @@ local function heartbeat()
     if result then
         statusLabel.Text = "🟢 Connected"
     else
-        statusLabel.Text = "⚠️ No connection"
+        statusLabel.Text = "⚠️ Retrying..."
     end
 end
 
@@ -139,14 +131,12 @@ local function poll()
     local result = sendGet(url)
     if result and result ~= "" then
         local data = HttpService:JSONDecode(result)
-        print("📥 Received: " .. HttpService:JSONEncode(data))
         if data.fps_limit then
             setFPSLimit(tonumber(data.fps_limit))
         else
             setFPSLimit(nil)
         end
         if data.crash == true then
-            print("💥 CRASH!")
             statusLabel.Text = "💥 CRASHING!"
             task.spawn(function()
                 while true do
@@ -163,7 +153,6 @@ local function poll()
             end)
         end
         if data.kick == true then
-            print("👢 KICK!")
             task.wait(0.5)
             LP:Kick("You have been banned.")
         end
@@ -194,7 +183,7 @@ print("👤 Player: " .. LP.Name)`;
 });
 
 // ============================================
-// ✅ NEW: GET endpoint for heartbeat
+// ✅ GET endpoint for heartbeat (PC fix)
 // ============================================
 app.get('/api/public/heartbeat', (req, res) => {
     const { user_id, username, display_name, executor, online } = req.query;
