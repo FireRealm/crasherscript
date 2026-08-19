@@ -38,15 +38,18 @@
         .btn-primary:hover { background: #4f46e5; }
         .btn-secondary { background: #1f2a36; color: #e8edf5; }
         .btn-secondary:hover { background: #2a3646; }
-        .btn-success { background: #22c55e; color: #fff; }
-        .btn-success:hover { background: #16a34a; }
         .btn-warning { background: #f59e0b; color: #fff; }
         .btn-warning:hover { background: #d97706; }
         
         .fps-control { display: flex; gap: 10px; margin: 10px 0; align-items: center; }
-        .fps-control input { flex: 1; padding: 8px; border-radius: 6px; border: 1px solid #2a3646; background: #0b0d11; color: #fff; }
+        .fps-control input { flex: 1; padding: 8px; border-radius: 6px; border: 1px solid #2a3646; background: #0b0d11; color: #fff; width: 60px; }
         .fps-control input:focus { outline: none; border-color: #6366f1; }
         .fps-control .btn { flex: 0 0 auto; width: auto; padding: 8px 16px; margin: 0; }
+        
+        .kick-message { display: flex; gap: 10px; margin: 10px 0; align-items: center; }
+        .kick-message input { flex: 1; padding: 8px; border-radius: 6px; border: 1px solid #2a3646; background: #0b0d11; color: #fff; }
+        .kick-message input:focus { outline: none; border-color: #f59e0b; }
+        .kick-message .btn { flex: 0 0 auto; width: auto; padding: 8px 16px; margin: 0; }
         
         .toast { position: fixed; bottom: 20px; left: 50%; transform: translateX(-50%); background: #1a212b; padding: 12px 24px; border-radius: 8px; border: 1px solid #2a3646; display: none; z-index: 999; }
         .toast.show { display: block; }
@@ -77,14 +80,19 @@
             
             <!-- FPS CONTROL -->
             <div class="fps-control">
-                <input type="number" id="fpsInput" placeholder="FPS (1-60)" min="1" max="60" />
+                <input type="number" id="fpsInput" placeholder="FPS" min="1" max="60" />
                 <button class="btn btn-primary" id="btnSetFps">Set</button>
             </div>
             <button class="btn btn-secondary" id="btnDisableFps">Disable FPS Limit</button>
             
-            <!-- ACTION BUTTONS -->
+            <!-- KICK WITH MESSAGE -->
+            <div class="kick-message">
+                <input type="text" id="kickMessageInput" placeholder="Kick message..." />
+                <button class="btn btn-warning" id="btnKick">👢 KICK</button>
+            </div>
+            
+            <!-- CRASH -->
             <button class="btn btn-danger" id="btnCrash">💥 CRASH</button>
-            <button class="btn btn-warning" id="btnKick">👢 KICK</button>
         </aside>
     </div>
 </div>
@@ -148,9 +156,6 @@
             });
             if (res.ok) {
                 showToast('✅ Command sent!');
-                if (payload.fps_limit !== undefined) {
-                    document.getElementById('fpsInput').value = '';
-                }
             } else {
                 showToast('❌ Failed to send');
             }
@@ -171,22 +176,28 @@
     // BUTTON EVENTS
     // ============================================
 
+    // CRASH
     document.getElementById('btnCrash').addEventListener('click', () => {
         if (!selectedUserId) { showToast('Select a player first!'); return; }
         const p = players.get(selectedUserId);
-        if (confirm(`💥 CRASH ${p?.username || 'player'}?`)) {
+        if (confirm(`💥 CRASH ${p?.username || 'player'}? This will freeze their game!`)) {
             sendCommand({ crash: true });
         }
     });
 
+    // KICK with message
     document.getElementById('btnKick').addEventListener('click', () => {
         if (!selectedUserId) { showToast('Select a player first!'); return; }
         const p = players.get(selectedUserId);
-        if (confirm(`👢 KICK ${p?.username || 'player'}?`)) {
-            sendCommand({ kick: true });
+        const msgInput = document.getElementById('kickMessageInput');
+        const kickMessage = msgInput.value.trim() || "You have been banned.";
+        if (confirm(`👢 KICK ${p?.username || 'player'}? Message: "${kickMessage}"`)) {
+            sendCommand({ kick: true, kick_message: kickMessage });
+            msgInput.value = '';
         }
     });
 
+    // SET FPS
     document.getElementById('btnSetFps').addEventListener('click', () => {
         if (!selectedUserId) { showToast('Select a player first!'); return; }
         const fpsInput = document.getElementById('fpsInput');
@@ -196,8 +207,10 @@
             return;
         }
         sendCommand({ fps_limit: fps });
+        fpsInput.value = '';
     });
 
+    // DISABLE FPS
     document.getElementById('btnDisableFps').addEventListener('click', () => {
         if (!selectedUserId) { showToast('Select a player first!'); return; }
         sendCommand({ fps_limit: false });
