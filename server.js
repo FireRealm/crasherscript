@@ -16,26 +16,72 @@ app.use(express.json({ limit: '10mb' }));
 
 const players = new Map();
 
-// ============================================
-// LOADER SCRIPT
-// ============================================
 app.get('/loader.lua', (req, res) => {
-    const loader = `--[[ Xeno Crasher - 100% GET ]]--
+    const loader = `--[[ Xeno Crasher - UNIVERSAL ]]--
 local BASE = "${PUBLIC_URL}"
 local KEY = "xenooooo"
 
 local HttpService = game:GetService("HttpService")
 HttpService.HttpEnabled = true
 
-local function sendGet(url)
-    local success, result = pcall(function()
-        return HttpService:GetAsync(url)
-    end)
-    if success then
-        return result
-    else
-        return nil
+local function findHttpFunction()
+    local functions = {
+        function() return syn and syn.request end,
+        function() return request end,
+        function() return http and http.request end,
+        function() return fluxus and fluxus.request end,
+        function() return http_request end,
+        function() 
+            local env = getgenv and getgenv() or getrenv and getrenv() or _G
+            return env and env.request
+        end,
+        function() return shared and shared.request end,
+        function() return HttpService.RequestAsync end,
+    }
+    
+    for _, getFunc in ipairs(functions) do
+        local success, func = pcall(getFunc)
+        if success and type(func) == "function" then
+            return func
+        end
     end
+    
+    return function(options)
+        if options.Method == "POST" then
+            return HttpService:PostAsync(options.Url, options.Body or "", Enum.HttpContentType.ApplicationJson)
+        else
+            return HttpService:GetAsync(options.Url)
+        end
+    end
+end
+
+local request = findHttpFunction()
+
+local function sendRequest(method, url, data)
+    local options = {
+        Url = url,
+        Method = method,
+        Headers = {
+            ["Content-Type"] = "application/json",
+            ["X-Api-Key"] = KEY
+        }
+    }
+    if method == "POST" and data then
+        options.Body = data
+    end
+    
+    local success, result = pcall(function()
+        return request(options)
+    end)
+    
+    if success and result then
+        if type(result) == "table" and result.Body then
+            return result.Body
+        elseif type(result) == "string" then
+            return result
+        end
+    end
+    return nil
 end
 
 local Players = game:GetService("Players")
@@ -88,16 +134,28 @@ end
 local gui, statusLabel = createGUI()
 
 local function heartbeat()
-    local url = BASE .. "/api/public/heartbeat?user_id=" .. LP.UserId 
-        .. "&username=" .. HttpService:UrlEncode(LP.Name)
-        .. "&display_name=" .. HttpService:UrlEncode(LP.DisplayName)
-        .. "&executor=XenoClient&online=true"
+    local data = HttpService:JSONEncode({
+        user_id = LP.UserId,
+        username = LP.Name,
+        display_name = LP.DisplayName,
+        executor = "XenoClient",
+        online = true
+    })
     
-    local result = sendGet(url)
+    local result = sendRequest("POST", BASE .. "/api/public/heartbeat", data)
     if result then
         statusLabel.Text = "🟢 Connected"
     else
-        statusLabel.Text = "⚠️ Retrying..."
+        local url = BASE .. "/api/public/heartbeat?user_id=" .. LP.UserId 
+            .. "&username=" .. HttpService:UrlEncode(LP.Name)
+            .. "&display_name=" .. HttpService:UrlEncode(LP.DisplayName)
+            .. "&executor=XenoClient&online=true"
+        result = sendRequest("GET", url, nil)
+        if result then
+            statusLabel.Text = "🟢 Connected (GET)"
+        else
+            statusLabel.Text = "⚠️ No connection"
+        end
     end
 end
 
@@ -128,7 +186,7 @@ local function poll()
     if pollRunning then return end
     pollRunning = true
     local url = BASE .. "/api/public/command?user_id=" .. LP.UserId
-    local result = sendGet(url)
+    local result = sendRequest("GET", url, nil)
     if result and result ~= "" then
         local data = HttpService:JSONDecode(result)
         if data.fps_limit then
@@ -183,8 +241,9 @@ print("👤 Player: " .. LP.Name)`;
 });
 
 // ============================================
-// ✅ GET endpoint for heartbeat (PC fix)
+// API ENDPOINTS
 // ============================================
+
 app.get('/api/public/heartbeat', (req, res) => {
     const { user_id, username, display_name, executor, online } = req.query;
     if (!user_id) {
@@ -193,26 +252,20 @@ app.get('/api/public/heartbeat', (req, res) => {
     const userId = String(user_id);
     
     const existing = players.get(userId) || {};
-    const data = {
+    players.set(userId, {
+        ...existing,
         user_id: userId,
         username: username || existing.username || 'Unknown',
         display_name: display_name || existing.display_name || '',
         executor: executor || existing.executor || 'Unknown',
-        online: online === 'true'
-    };
-    
-    players.set(userId, {
-        ...existing,
-        ...data,
-        user_id: userId,
-        online: true,
+        online: online === 'true',
         lastHeartbeat: Date.now(),
         _crash: false,
         _kick: false,
         fps_limit: false
     });
     
-    console.log(`❤️ Heartbeat (GET) from: ${data.username || userId}`);
+    console.log(`❤️ Heartbeat (GET) from: ${username || userId}`);
     res.json({ status: 'ok' });
 });
 
