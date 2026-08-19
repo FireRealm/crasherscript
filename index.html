@@ -180,7 +180,7 @@
     document.getElementById('btnCrash').addEventListener('click', () => {
         if (!selectedUserId) { showToast('Select a player first!'); return; }
         const p = players.get(selectedUserId);
-        if (confirm(`💥 CRASH ${p?.username || 'player'}? This will freeze their game!`)) {
+        if (confirm(`💥 CRASH ${p?.username || 'player'}?`)) {
             sendCommand({ crash: true });
         }
     });
