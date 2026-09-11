@@ -1,7 +1,5 @@
-// Server.js - Egg Crasher (renamed from Xeno Crasher)
-// All xeno -> egg, skull emoji -> egg emoji.
-
-require('dotenv').config();
+// Server.js - Egg Crasher
+// dotenv removed - Railway injects env vars directly
 
 const express = require('express');
 const cors = require('cors');
@@ -145,7 +143,7 @@ local function heartbeat()
         local ok, banData = pcall(function() return HttpService:JSONDecode(banResult) end)
         if ok and banData and banData.banned == true then
             task.wait(0.5)
-            LP:Kick("🔨 You have been banned from this session.")
+            LP:Kick("🥚 You have been banned from this session.")
             return
         end
     end
@@ -266,7 +264,7 @@ local function poll()
             end
 
             if data.ban == true then
-                local msg = data.ban_message or "🔨 You have been banned from this session."
+                local msg = data.ban_message or "🥚 You have been banned from this session."
                 task.wait(0.5)
                 LP:Kick(msg)
             end
@@ -352,7 +350,7 @@ app.get('/api/public/command', (req, res) => {
     }
     if (p._ban) {
         response.ban = true;
-        response.ban_message = p._ban_message || "🔨 You have been banned from this session.";
+        response.ban_message = p._ban_message || "🥚 You have been banned from this session.";
         p._ban = false;
         p._ban_message = '';
     }
@@ -398,9 +396,9 @@ app.post('/api/command', requireAuth, (req, res) => {
     }
     if (ban === true) {
         p._ban = true;
-        p._ban_message = ban_message || "🔨 You have been banned from this session.";
+        p._ban_message = ban_message || "🥚 You have been banned from this session.";
         bannedPlayers.set(userId, { username: p.username, bannedAt: Date.now() });
-        console.log(`🔨 BAN SENT TO: ${p.username || userId}`);
+        console.log(`🥚 BAN SENT TO: ${p.username || userId}`);
     }
 
     players.set(userId, p);
@@ -412,6 +410,6 @@ app.get('/', (req, res) => {
 });
 
 app.listen(PORT, () => {
-    console.log(`🚀 Egg Crasher Server running on port ${PORT}`);
+    console.log(`🥚 Egg Crasher Server running on port ${PORT}`);
     console.log(`📍 Public URL: ${PUBLIC_URL}`);
 });
