@@ -1,5 +1,5 @@
-// Server.js - Egg Crasher
-// dotenv removed - Railway injects env vars directly
+// Server.js - Egg Crasher - FIXED
+// Removed dotenv, binds to 0.0.0.0, full working server.
 
 const express = require('express');
 const cors = require('cors');
@@ -409,7 +409,7 @@ app.get('/', (req, res) => {
     res.sendFile(path.join(__dirname, 'index.html'));
 });
 
-app.listen(PORT, () => {
+app.listen(PORT, '0.0.0.0', () => {
     console.log(`🥚 Egg Crasher Server running on port ${PORT}`);
     console.log(`📍 Public URL: ${PUBLIC_URL}`);
 });
