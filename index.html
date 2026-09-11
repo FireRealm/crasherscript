@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <title>Xeno Crasher</title>
+    <title>Egg Crasher</title>
     <style>
         * { margin: 0; padding: 0; box-sizing: border-box; }
         body { font-family: Arial, sans-serif; background: #0b0d11; color: #e8edf5; padding: 20px; }
@@ -75,7 +75,7 @@
 
 <div class="login-container" id="loginContainer">
     <div class="login-box">
-        <h1>💀 Xeno Crasher</h1>
+        <h1>🥚 Egg Crasher</h1>
         <p class="sub">Enter password to access panel</p>
         <input type="password" id="passwordInput" placeholder="Enter password..." autofocus />
         <button class="btn" onclick="login()">🔓 Login</button>
@@ -86,7 +86,7 @@
 <div class="app" id="app">
     <div class="container">
         <header class="header">
-            <div class="logo">💀 Xeno Crasher</div>
+            <div class="logo">🥚 Egg Crasher</div>
             <div class="stats">
                 <span>🟢 <span class="num" id="onlineCount">0</span> online</span>
                 <span>⏱ <span class="num" id="refreshTimer">1s</span></span>
@@ -128,10 +128,10 @@
 <script>
     const API_BASE = window.location.origin;
 
-    function getToken() { return localStorage.getItem('xeno_token'); }
+    function getToken() { return localStorage.getItem('egg_token'); }
     function setToken(t) {
-        if (t) localStorage.setItem('xeno_token', t);
-        else localStorage.removeItem('xeno_token');
+        if (t) localStorage.setItem('egg_token', t);
+        else localStorage.removeItem('egg_token');
     }
 
     function esc(s) {
