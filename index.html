@@ -51,6 +51,9 @@ body { font-family: Arial, sans-serif; background:#0b0d11; color:#e8edf5; paddin
 .fps-control .btn, .kick-message .btn { flex:0 0 auto; width:auto; padding:8px 16px; margin:0; }
 .toast { position:fixed; bottom:20px; left:50%; transform:translateX(-50%); background:#1a212b; padding:12px 24px; border-radius:8px; border:1px solid #2a3646; display:none; z-index:999; }
 .toast.show { display:block; }
+.loader-box { background:#12171f; border-radius:10px; padding:15px; margin-top:15px; }
+.loader-box code { display:block; background:#0b0d11; padding:10px; border-radius:6px; color:#22c55e; font-size:12px; word-break:break-all; }
+.copy-btn { margin-top:10px; padding:8px 16px; border:none; border-radius:6px; background:#6366f1; color:#fff; cursor:pointer; font-weight:bold; }
 </style>
 </head>
 <body>
@@ -81,6 +84,11 @@ body { font-family: Arial, sans-serif; background:#0b0d11; color:#e8edf5; paddin
         <div class="player-grid" id="playerGrid">
           <div class="empty">No players online. Execute the script in Roblox.</div>
         </div>
+        <div class="loader-box">
+          <h3>📜 Loader (auto-updates)</h3>
+          <code id="loaderCode">loadstring(game:HttpGet("__LOADER_URL__"))()</code>
+          <button class="copy-btn" onclick="copyLoader()">📋 Copy</button>
+        </div>
       </section>
       <aside class="command-panel">
         <h3>🎮 Controls</h3>
@@ -104,6 +112,9 @@ body { font-family: Arial, sans-serif; background:#0b0d11; color:#e8edf5; paddin
 
 <script>
 const API_BASE = window.location.origin;
+document.getElementById('loaderCode').textContent =
+  'loadstring(game:HttpGet("' + API_BASE + '/loader.lua"))()';
+
 function getToken() { return localStorage.getItem('fowascend_token'); }
 function setToken(t) { t ? localStorage.setItem('fowascend_token', t) : localStorage.removeItem('fowascend_token'); }
 function esc(s) { const d = document.createElement('div'); d.textContent = s == null ? '' : String(s); return d.innerHTML; }
@@ -218,6 +229,11 @@ function showToast(msg) {
   toast.classList.add('show');
   clearTimeout(toast._timeout);
   toast._timeout = setTimeout(() => toast.classList.remove('show'), 3000);
+}
+
+function copyLoader() {
+  const txt = document.getElementById('loaderCode').textContent;
+  navigator.clipboard.writeText(txt).then(() => showToast('✅ Copied!'));
 }
 
 document.getElementById('btnCrash').addEventListener('click', () => {
