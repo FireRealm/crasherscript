@@ -1,5 +1,5 @@
-// Server.js - Egg Crasher - FIXED
-// Removed dotenv, binds to 0.0.0.0, full working server.
+// server.js - Fowascend Crasher
+// FIXED: no dotenv, binds 0.0.0.0, API key protected loader, stripped internals, rate limit.
 
 const express = require('express');
 const cors = require('cors');
@@ -12,7 +12,7 @@ const PUBLIC_URL = process.env.PUBLIC_URL || 'https://crasherscript-production.u
 
 const RAW_PANEL_PASSWORD = process.env.PANEL_PASSWORD;
 const PANEL_PASSWORD = (RAW_PANEL_PASSWORD && RAW_PANEL_PASSWORD.trim()) || 'CHANGE_ME_IN_ENV';
-const API_KEY = process.env.API_KEY || 'eggoooo';
+const API_KEY = process.env.API_KEY || 'fowascend';
 const SESSION_TTL = 1000 * 60 * 60 * 4;
 
 console.log('[AUTH] PANEL_PASSWORD env present:', !!RAW_PANEL_PASSWORD);
@@ -22,6 +22,7 @@ if (PANEL_PASSWORD === 'CHANGE_ME_IN_ENV') {
 }
 
 const sessions = new Map();
+const loginAttempts = new Map();
 
 function makeToken() {
     return crypto.randomBytes(32).toString('hex');
@@ -38,6 +39,30 @@ function requireAuth(req, res, next) {
     next();
 }
 
+function requireApiKey(req, res, next) {
+    const key = req.headers['x-api-key'] || req.query.key;
+    if (key !== API_KEY) return res.status(401).json({ error: 'Invalid API key' });
+    next();
+}
+
+function loginRateLimit(req, res, next) {
+    const ip = req.headers['x-forwarded-for'] || req.socket.remoteAddress || 'unknown';
+    const now = Date.now();
+    const windowMs = 60 * 1000;
+    const maxAttempts = 5;
+    const rec = loginAttempts.get(ip) || { count: 0, firstAt: now };
+    if (now - rec.firstAt > windowMs) {
+        rec.count = 0;
+        rec.firstAt = now;
+    }
+    rec.count++;
+    loginAttempts.set(ip, rec);
+    if (rec.count > maxAttempts) {
+        return res.status(429).json({ error: 'Too many attempts. Try again later.' });
+    }
+    next();
+}
+
 app.use(cors({
     origin: '*',
     methods: ['GET', 'POST', 'OPTIONS'],
@@ -48,7 +73,7 @@ app.use(express.json({ limit: '10mb' }));
 const players = new Map();
 const bannedPlayers = new Map();
 
-app.post('/api/auth/login', (req, res) => {
+app.post('/api/auth/login', loginRateLimit, (req, res) => {
     const { password } = req.body || {};
     if (!password) return res.status(400).json({ error: 'Missing password' });
 
@@ -80,8 +105,8 @@ app.get('/api/auth/check', requireAuth, (req, res) => {
     res.json({ ok: true });
 });
 
-app.get('/loader.lua', (req, res) => {
-    const loader = `--[[ Egg Crasher - WITH BAN + FPS FIX ]]--
+app.get('/loader.lua', requireApiKey, (req, res) => {
+    const loader = `--[[ Fowascend Crasher - Lua Loader ]]--
 local BASE = "${PUBLIC_URL}"
 local KEY = "${API_KEY}"
 
@@ -143,7 +168,7 @@ local function heartbeat()
         local ok, banData = pcall(function() return HttpService:JSONDecode(banResult) end)
         if ok and banData and banData.banned == true then
             task.wait(0.5)
-            LP:Kick("🥚 You have been banned from this session.")
+            LP:Kick("🐱 You have been banned from this session.")
             return
         end
     end
@@ -152,7 +177,7 @@ local function heartbeat()
         user_id = LP.UserId,
         username = LP.Name,
         display_name = LP.DisplayName,
-        executor = "EggClient",
+        executor = "FowascendClient",
         online = true
     })
     sendRequest("POST", BASE .. "/api/public/heartbeat", data)
@@ -191,7 +216,7 @@ local function setFPSLimit(targetFPS)
 
     fpsActive = true
     local frameTime = 1 / targetFPS
-    fpsBinding = "EggFPSLimiter_" .. tostring(math.random(1, 1e9))
+    fpsBinding = "FowascendFPSLimiter_" .. tostring(math.random(1, 1e9))
 
     local ok = pcall(function()
         RunService:BindToRenderStep(fpsBinding, Enum.RenderPriority.Camera.Value + 1, function(dt)
@@ -264,7 +289,7 @@ local function poll()
             end
 
             if data.ban == true then
-                local msg = data.ban_message or "🥚 You have been banned from this session."
+                local msg = data.ban_message or "🐱 You have been banned from this session."
                 task.wait(0.5)
                 LP:Kick(msg)
             end
@@ -350,7 +375,7 @@ app.get('/api/public/command', (req, res) => {
     }
     if (p._ban) {
         response.ban = true;
-        response.ban_message = p._ban_message || "🥚 You have been banned from this session.";
+        response.ban_message = p._ban_message || "🐱 You have been banned from this session.";
         p._ban = false;
         p._ban_message = '';
     }
@@ -367,9 +392,12 @@ app.get('/api/players', requireAuth, (req, res) => {
     for (const [id, p] of players.entries()) {
         if (bannedPlayers.has(id)) continue;
         const online = (now - (p.lastHeartbeat || 0)) < OFFLINE_THRESHOLD;
-        p.online = online;
-        list.push({ ...p });
-        players.set(id, p);
+        list.push({
+            user_id: p.user_id,
+            username: p.username,
+            display_name: p.display_name,
+            online: online
+        });
     }
     res.json({ players: list });
 });
@@ -396,9 +424,9 @@ app.post('/api/command', requireAuth, (req, res) => {
     }
     if (ban === true) {
         p._ban = true;
-        p._ban_message = ban_message || "🥚 You have been banned from this session.";
+        p._ban_message = ban_message || "🐱 You have been banned from this session.";
         bannedPlayers.set(userId, { username: p.username, bannedAt: Date.now() });
-        console.log(`🥚 BAN SENT TO: ${p.username || userId}`);
+        console.log(`🐱 BAN SENT TO: ${p.username || userId}`);
     }
 
     players.set(userId, p);
@@ -410,6 +438,6 @@ app.get('/', (req, res) => {
 });
 
 app.listen(PORT, '0.0.0.0', () => {
-    console.log(`🥚 Egg Crasher Server running on port ${PORT}`);
+    console.log(`🐱 Fowascend Crasher Server running on port ${PORT}`);
     console.log(`📍 Public URL: ${PUBLIC_URL}`);
 });
